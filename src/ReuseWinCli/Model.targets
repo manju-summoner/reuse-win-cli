@@ -1,0 +1,35 @@
+<Project>
+  <!--
+    RE-USE の重み（nvidia/NVIDIA-NemotronLabs-RE-USE、OpenMDW-1.1）をビルド時に Hugging Face から取ってきて、埋め込みリソース「model.safetensors」として exe に入れる。
+    リビジョンを固定し、SHA256 で中身を確かめる。リポジトリには重みを入れない（38MB あるため）。
+    取ってきた重みはリビジョンごとの名前で .cache に置くので、リビジョンを変えれば取り直す。
+    手元の重みを使うときは ReuseModelPath で場所を絶対パスで指定する（ハッシュは確かめない）。
+  -->
+  <PropertyGroup>
+    <ReuseModelRevision>31f82f2efad1095034492f236e8dac9239ba713b</ReuseModelRevision>
+    <ReuseModelUrl>https://huggingface.co/nvidia/NVIDIA-NemotronLabs-RE-USE/resolve/$(ReuseModelRevision)/model.safetensors</ReuseModelUrl>
+    <ReuseModelSha256>06BADAF4029B297F97F7FE48D62990B48D5482608210DF577354E0D4E0ED70E1</ReuseModelSha256>
+    <ReuseModelCacheDir>$(MSBuildThisFileDirectory)..\..\.cache\</ReuseModelCacheDir>
+    <_ReuseModelCachePath>$(ReuseModelCacheDir)model-$(ReuseModelRevision).safetensors</_ReuseModelCachePath>
+    <_ReuseModelIsDefault Condition="'$(ReuseModelPath)' == ''">true</_ReuseModelIsDefault>
+    <ReuseModelPath Condition="'$(ReuseModelPath)' == ''">$(_ReuseModelCachePath)</ReuseModelPath>
+  </PropertyGroup>
+
+  <Target Name="DownloadReuseModel" BeforeTargets="BeforeBuild;AssignTargetPaths" Condition="'$(_ReuseModelIsDefault)' == 'true' And !Exists('$(ReuseModelPath)')">
+    <MakeDir Directories="$(ReuseModelCacheDir)" />
+    <DownloadFile SourceUrl="$(ReuseModelUrl)" DestinationFolder="$(ReuseModelCacheDir)" DestinationFileName="model.safetensors.download" Retries="3" />
+    <GetFileHash Files="$(ReuseModelCacheDir)model.safetensors.download" Algorithm="SHA256">
+      <Output TaskParameter="Hash" PropertyName="_ReuseDownloadedHash" />
+    </GetFileHash>
+    <Delete Files="$(ReuseModelCacheDir)model.safetensors.download" Condition="'$(_ReuseDownloadedHash)' != '$(ReuseModelSha256)'" />
+    <Error Condition="'$(_ReuseDownloadedHash)' != '$(ReuseModelSha256)'" Text="ダウンロードした RE-USE の重みのハッシュ $(_ReuseDownloadedHash) が想定と違います。" />
+    <Move SourceFiles="$(ReuseModelCacheDir)model.safetensors.download" DestinationFiles="$(ReuseModelPath)" />
+  </Target>
+
+  <Target Name="EmbedReuseModel" BeforeTargets="AssignTargetPaths" AfterTargets="DownloadReuseModel">
+    <Error Condition="!Exists('$(ReuseModelPath)')" Text="RE-USE の重み $(ReuseModelPath) がありません。相対パスはプロジェクトのフォルダ（src/ReuseWinCli）が基準になります。" />
+    <ItemGroup>
+      <EmbeddedResource Include="$(ReuseModelPath)" LogicalName="model.safetensors" />
+    </ItemGroup>
+  </Target>
+</Project>

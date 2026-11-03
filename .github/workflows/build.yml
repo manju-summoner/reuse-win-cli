@@ -1,0 +1,80 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: windows-latest
+    outputs:
+      version: ${{ steps.version.outputs.value }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      # RE-USE の重み（38MB）はビルドのたびに Hugging Face から取らず、Model.targets（リビジョンとハッシュ）が変わるまでキャッシュする
+      - uses: actions/cache@v4
+        with:
+          path: .cache
+          key: reuse-model-${{ hashFiles('src/ReuseWinCli/Model.targets') }}
+
+      - name: Version
+        id: version
+        shell: pwsh
+        env:
+          REF: ${{ github.ref }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          $version = if ($env:REF -like 'refs/tags/v*') { $env:REF_NAME.Substring(1) } else { '0.0.0-dev' }
+          "value=$version" >> $env:GITHUB_OUTPUT
+
+      # ランナーには GPU が無いので、GPU のテストは WARP（ソフトウェアの D3D11）で走る。
+      # PyTorch の出力と比べるテストは fixture が無いので飛ばされる
+      - name: Test
+        run: dotnet test -c Release
+
+      - name: Publish
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.version.outputs.value }}
+        run: dotnet publish src/ReuseWinCli/ReuseWinCli.csproj -c Release -o publish "-p:Version=$env:VERSION"
+
+      - name: Collect
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item publish/reuse-win-cli.exe, LICENSE, THIRD-PARTY-NOTICES.txt dist/
+          Get-FileHash dist/reuse-win-cli.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  reuse-win-cli.exe" } | Set-Content dist/SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: reuse-win-cli
+          path: dist/
+
+  # リリースを作る権限は、タグの push のときのこのジョブにだけ与える
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: reuse-win-cli
+          path: dist
+
+      - name: Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: gh release create "$TAG" dist/reuse-win-cli.exe dist/LICENSE dist/THIRD-PARTY-NOTICES.txt dist/SHA256SUMS.txt --repo "$GITHUB_REPOSITORY" --title "$TAG" --generate-notes

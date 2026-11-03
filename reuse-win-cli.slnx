@@ -1,0 +1,8 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ReuseWinCli/ReuseWinCli.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ReuseWinCli.Tests/ReuseWinCli.Tests.csproj" />
+  </Folder>
+</Solution>
