@@ -15,14 +15,14 @@ jobs:
     outputs:
       version: ${{ steps.version.outputs.value }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-dotnet@v4
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
 
       # RE-USE の重み（38MB）はビルドのたびに Hugging Face から取らず、Model.targets（リビジョンとハッシュ）が変わるまでキャッシュする
-      - uses: actions/cache@v4
+      - uses: actions/cache@v6
         with:
           path: .cache
           key: reuse-model-${{ hashFiles('src/ReuseWinCli/Model.targets') }}
@@ -55,7 +55,7 @@ jobs:
           Copy-Item publish/reuse-win-cli.exe, LICENSE, THIRD-PARTY-NOTICES.txt dist/
           Get-FileHash dist/reuse-win-cli.exe -Algorithm SHA256 | ForEach-Object { "$($_.Hash.ToLower())  reuse-win-cli.exe" } | Set-Content dist/SHA256SUMS.txt
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: reuse-win-cli
           path: dist/
@@ -68,7 +68,7 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           name: reuse-win-cli
           path: dist
