@@ -20,4 +20,9 @@ namespace ReuseWinCli.Audio
     {
         void Write(ReadOnlySpan<float> samples);
     }
+
+    /// <summary>破棄で書き終える（ヘッダーの書き戻しとストリームを閉じる）出力</summary>
+    internal interface IAudioOutput : IAudioWriter, IDisposable
+    {
+    }
 }

@@ -35,7 +35,7 @@ reuse-win-cli <入力ファイル>... [オプション]
 
 | オプション | 説明 |
 |---|---|
-| `-o`, `--output <パス>` | 出力先のファイル（入力が 1 つの場合のみ） |
+| `-o`, `--output <パス>` | 出力先のファイル（入力が 1 つの場合のみ）。`-` で標準出力 |
 | `-s`, `--strength <0-100>` | 補正の強さ（%）。元の音声と混合する割合。既定値は 100 |
 | `-y`, `--overwrite` | 出力先に同名のファイルがあれば上書きする（指定しない場合、自動で決めたファイル名には `_enhanced (2).wav` のように連番を付与し、`-o` で指定したファイル名ならエラーにする） |
 | `--cpu` | GPU を使わずに処理する |
@@ -50,6 +50,34 @@ reuse-win-cli <入力ファイル>... [オプション]
 reuse-win-cli 録音.m4a
 reuse-win-cli 録音.mp4 -o きれいな声.wav -s 80
 ```
+
+### 標準入出力（パイプ）
+
+入力に `-` を指定すると標準入力から読み込み、`-o -` を指定すると標準出力へ書き出します。入力が標準入力の場合、`-o` を省略すると出力先は標準出力になります。
+ffmpeg などのツールとパイプでつないで使えます。処理は前から順に進み、チャンクを処理するたびに出力します。
+
+| オプション | 説明 |
+|---|---|
+| `--in-format <形式>` | 標準入力の形式。`wav`（既定）・`f32le`・`s16le` |
+| `--rate <Hz>` | 標準入力が `f32le`・`s16le` の場合のサンプリングレート（8000〜48000） |
+| `--channels <数>` | 標準入力が `f32le`・`s16le` の場合のチャンネル数（1〜32） |
+| `--out-format <形式>` | 出力の形式。`wav`（既定）・`f32le`（32bit float のリトルエンディアン。ファイルに出力する場合の既定の拡張子は `.raw`） |
+
+例（cmd.exe）:
+
+```bat
+ffmpeg -i in.mp4 -f f32le -ac 2 -ar 48000 - | reuse-win-cli - --in-format f32le --rate 48000 --channels 2 --out-format f32le | ffmpeg -f f32le -ar 48000 -ac 2 -i - out.flac
+```
+
+- Windows PowerShell 5.1（と 7.4 より前の PowerShell）は、外部コマンドの間のパイプやリダイレクトでバイナリを壊すので、cmd.exe か PowerShell 7.4 以降で実行してください。
+- 標準入出力がコンソールに接続されたまま（リダイレクトしていない）の場合は、エラーになります。
+- 標準入力の WAV は、16/24/32bit の PCM と 32bit float に対応しています。mp4 などのコンテナーは標準入力からは読み込めないので、ffmpeg で WAV か raw に変換してから渡してください。
+- 標準入力のサンプリングレートが 8kHz〜48kHz の範囲外の場合はエラーになります（ファイルの入力と違い、変換しません）。
+- パイプへ書き出す WAV は、全体の長さが分からないので、ヘッダーの長さの欄を「不明」（0xFFFFFFFF）にします。ffmpeg や sox はそのまま読み込めます。cmd.exe で標準出力をファイルにリダイレクトした場合は、正しい長さを書き込みます（PowerShell のリダイレクトはパイプを経由するので、長さは「不明」になります。ファイルに保存する場合は `-o` を推奨します）。
+- 入力元がデータを送らないまま止まっている場合も、Ctrl+C で中止できます。
+- 標準出力に音声を書き出す場合、進捗などの表示はすべて標準エラーに出力します。
+- RE-USE は前後の音声を使うモデルなので、出力は入力より約 5 秒（チャンクの長さ）＋推論の時間だけ遅れます。
+- 出力先のプログラムが先に終了してパイプが閉じられた場合は、そこで処理を終了します。
 
 ## 入力と出力
 
@@ -150,6 +178,14 @@ reuse-win-cli <input file>... [options]
 | `--license` | Show license information |
 | `-v`, `--version` | Show the version |
 | `-h`, `--help` | Show help |
+
+Use `-` as the input to read standard input, and `-o -` to write standard output (standard input defaults to standard output). Options: `--in-format wav|f32le|s16le` (default `wav`), `--rate` and `--channels` (required for `f32le`/`s16le` input), `--out-format wav|f32le` (default `wav`).
+
+```bat
+ffmpeg -i in.mp4 -f f32le -ac 2 -ar 48000 - | reuse-win-cli - --in-format f32le --rate 48000 --channels 2 --out-format f32le | ffmpeg -f f32le -ar 48000 -ac 2 -i - out.flac
+```
+
+Use cmd.exe or PowerShell 7.4+ (Windows PowerShell 5.1 corrupts binary data in pipes). WAV written to a pipe uses "unknown" (0xFFFFFFFF) sizes; redirecting to a file in cmd.exe writes the correct sizes. With `--out-format f32le`, the default output extension is `.raw`. Messages go to standard error when audio is written to standard output. The output lags the input by about 5 seconds (one chunk) plus the inference time.
 
 - **Input**: anything Windows Media Foundation can decode (wav, mp3, m4a, aac, mp4, mov, wma, flac, ...). For videos, the first audio track is used.
 - **Output**: 32-bit float WAV with the same sample rate and channel count as the input (rates outside 8–48 kHz are converted).

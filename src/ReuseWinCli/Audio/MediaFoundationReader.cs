@@ -13,9 +13,9 @@ namespace ReuseWinCli.Audio
     /// </summary>
     internal sealed class MediaFoundationReader : IAudioReader, IDisposable
     {
-        /// <summary>RE-USE の公式が受け付けるサンプリングレートの範囲。外れるものは Media Foundation に変換させる</summary>
-        const int MinSampleRate = 8000;
-        const int MaxSampleRate = 48000;
+        // RE-USE の公式が受け付けるサンプリングレートの範囲。外れるものは Media Foundation に変換させる
+        const int MinSampleRate = AudioLimits.MinSampleRate;
+        const int MaxSampleRate = AudioLimits.MaxSampleRate;
 
         readonly IMFSourceReader reader;
         float[] pending = [];
