@@ -1,14 +1,14 @@
 # reuse-win-cli
 
-> **非公式のツールです。NVIDIA とは関係なく、NVIDIA が公認・推奨するものでもありません。**
+> **非公式のツールです。NVIDIA とは無関係で、NVIDIA が公認・推奨するものでもありません。**
 > Unofficial. Not affiliated with or endorsed by NVIDIA.
 
 NVIDIA の音声補正モデル [RE-USE](https://huggingface.co/nvidia/NVIDIA-NemotronLabs-RE-USE)（NVIDIA NemotronLabs RE-USE）を、Windows で手軽に使うためのコマンドラインツールです。
-録音のノイズ・残響・こもりなどを取り除き、声を聞き取りやすくします。
+録音のノイズ・残響・こもりなどを除去し、声を聞き取りやすくします。
 
-公式の実装は Linux と NVIDIA の GPU（CUDA）が必要ですが、このツールは推論を Direct3D 11 のコンピュートシェーダー（HLSL）で書き直しているので、
-**NVIDIA・AMD・Intel のどの GPU でも動きます**。GPU が使えない PC でも、CPU で（時間はかかりますが）動きます。
-モデルの重みは exe に入っているので、**exe 1 つをダウンロードするだけで使えます**。Python や .NET のインストールは要りません。
+公式の実装は Linux と NVIDIA の GPU（CUDA）が必要ですが、このツールは推論を Direct3D 11 のコンピュートシェーダー（HLSL）で再実装しているので、
+**NVIDIA・AMD・Intel のどの GPU でも動作します**。GPU が使えない PC でも、CPU で（時間はかかりますが）動作します。
+モデルの重みは exe に同梱されているので、**exe 1 つをダウンロードするだけで使えます**。Python や .NET のインストールは不要です。
 
 [English](#english)
 
@@ -17,15 +17,15 @@ NVIDIA の音声補正モデル [RE-USE](https://huggingface.co/nvidia/NVIDIA-Ne
 ### ドラッグ＆ドロップ
 
 1. [Releases](../../releases) から `reuse-win-cli.exe` をダウンロードします。
-2. 音声ファイルや動画ファイルを `reuse-win-cli.exe` のアイコンにドラッグ＆ドロップします（複数のファイルを一度に落としてもかまいません）。
-3. 元のファイルと同じフォルダに `<元の名前>_enhanced.wav` ができます。
+2. 音声ファイルや動画ファイルを `reuse-win-cli.exe` のアイコンにドラッグ＆ドロップします（複数のファイルをまとめてドラッグ＆ドロップすることもできます）。
+3. 元のファイルと同じフォルダに `<元のファイル名>_enhanced.wav` が出力されます。
 
-### 初めて起動するときの警告について
+### 初回起動時の警告について
 
-このツールの exe にはコード署名が付いていないので、初めて起動するときに Windows の SmartScreen が「Windows によって PC が保護されました」という画面を出して止めることがあります。
-そのときは、画面の **「詳細情報」** をクリックし、表示される **「実行」** ボタンを押してください。
+このツールの exe にはコード署名がないため、初回起動時に Windows の SmartScreen が「Windows によって PC が保護されました」という画面を表示して、実行をブロックすることがあります。
+その場合は、画面の **「詳細情報」** をクリックし、表示される **「実行」** ボタンを押してください。
 
-ダウンロードしたファイルが本物かどうかは、Releases にある `SHA256SUMS.txt` の値と、PowerShell の `Get-FileHash reuse-win-cli.exe` の結果を比べて確かめられます。
+ダウンロードしたファイルが改ざんされていないかは、Releases にある `SHA256SUMS.txt` の値と、PowerShell の `Get-FileHash reuse-win-cli.exe` の結果を比較して確認できます。
 
 ### コマンドライン
 
@@ -35,11 +35,11 @@ reuse-win-cli <入力ファイル>... [オプション]
 
 | オプション | 説明 |
 |---|---|
-| `-o`, `--output <パス>` | 出力先のファイル（入力が 1 つのときだけ） |
-| `-s`, `--strength <0-100>` | 補正の強さ（%）。元の音と混ぜる割合。既定は 100 |
-| `-y`, `--overwrite` | 出力先に同じ名前のファイルがあれば上書きする（指定しなければ、自動で決めた名前には `_enhanced (2).wav` のように番号を付け、`-o` で指定した名前ならエラーにする） |
+| `-o`, `--output <パス>` | 出力先のファイル（入力が 1 つの場合のみ） |
+| `-s`, `--strength <0-100>` | 補正の強さ（%）。元の音声と混合する割合。既定値は 100 |
+| `-y`, `--overwrite` | 出力先に同名のファイルがあれば上書きする（指定しない場合、自動で決めたファイル名には `_enhanced (2).wav` のように連番を付与し、`-o` で指定したファイル名ならエラーにする） |
 | `--cpu` | GPU を使わずに処理する |
-| `--model <パス>` | exe に入っている重みの代わりに使う RE-USE の重み（`.safetensors`） |
+| `--model <パス>` | exe に同梱されている重みの代わりに使用する RE-USE の重み（`.safetensors`） |
 | `--license` | ライセンスを表示する |
 | `-v`, `--version` | バージョンを表示する |
 | `-h`, `--help` | 使い方を表示する |
@@ -53,34 +53,34 @@ reuse-win-cli 録音.mp4 -o きれいな声.wav -s 80
 
 ## 入力と出力
 
-- **入力**: wav・mp3・m4a・aac・mp4・mov・wma・flac など、Windows（Media Foundation）が読める形式。動画は最初の音声トラックを使います。
-- **出力**: 32bit float の WAV。サンプリングレートとチャンネル数は入力と同じです（入力が 8kHz〜48kHz の範囲外なら、範囲内に変換します）。
-  動画の音声だけを書き出すので、動画に戻すときは動画編集ソフトで差し替えてください。
-- WAV の大きさの上限（4GB）があるので、48kHz ステレオで約 3 時間を超える音声は書き出せません。
+- **入力**: wav・mp3・m4a・aac・mp4・mov・wma・flac など、Windows（Media Foundation）がデコードできる形式。動画は最初の音声トラックを使用します。
+- **出力**: 32bit float の WAV。サンプリングレートとチャンネル数は入力と同じです（入力が 8kHz〜48kHz の範囲外の場合は、範囲内に変換します）。
+  動画の音声だけを出力するので、動画に戻す場合は動画編集ソフトで音声を差し替えてください。
+- WAV のファイルサイズの上限（4GB）があるため、48kHz ステレオで約 3 時間を超える音声は出力できません。
 - ステレオなどの複数チャンネルは、チャンネルごとに補正します。
 
 ## 動作環境
 
 - Windows 10 / 11（64bit）。N エディションでは「メディア機能パック」（Media Feature Pack）が必要です。
-- Direct3D 11（機能レベル 11.0）に対応した GPU（NVIDIA・AMD・Intel のどれでも）。GPU が複数ある PC（内蔵 GPU と外付け GPU のノート PC など）では、いちばん性能の高い GPU を使います（Windows の「設定 > ディスプレイ > グラフィックス」でこのツールに「省電力」を選んでも、性能の高い GPU を使います）。
-- GPU が使えない場合は CPU（WARP）で処理します。GPU に比べて大幅に遅く、音声の長さの 20 倍以上かかることがあります。
+- Direct3D 11（機能レベル 11.0）に対応した GPU（NVIDIA・AMD・Intel のどれでも）。GPU が複数ある PC（内蔵 GPU と外付け GPU を搭載したノート PC など）では、最も性能の高い GPU を使用します（Windows の「設定 > ディスプレイ > グラフィックス」でこのツールに「省電力」を選択しても、性能の高い GPU を使用します）。
+- GPU が使えない場合は CPU（WARP）で処理します。GPU に比べて大幅に遅く、音声の長さの 20 倍以上の時間がかかることがあります。
 
-## 処理の中身
+## 処理の内容
 
-公式の推論（`inference_chunk.py`）と同じく、音声を一定の長さ（最大 5 秒）の区間に分けて、半分ずつ重ねて推論し、Hann 窓で混ぜます。
-区間の長さは GPU のメモリーに合わせて短くします。区間の長さが変わると、区間の境目の結果がわずかに変わります。
+公式の推論（`inference_chunk.py`）と同じく、音声を一定の長さ（最大 5 秒）のチャンクに分割し、半分ずつ重ねて推論して、Hann 窓で合成します。
+チャンクの長さは GPU のメモリーに合わせて短くします。チャンクの長さが変わると、チャンクの境界付近の結果がわずかに変わります。
 
-推論は公式の PyTorch の実装と比べて検証しています（float64 の PyTorch の出力に対して 44.1kHz で 86.8dB、8kHz で 112dB の SNR。公式の fp32 の CUDA の実装自身は 55.8dB・68.7dB）。
+推論は公式の PyTorch の実装と比較して検証しています（float64 の PyTorch の出力に対して、44.1kHz で 86.8dB、8kHz で 112dB の SNR。公式の fp32 の CUDA の実装自体は 55.8dB・68.7dB）。
 
 ## ライセンス
 
 - このツールのソースコード: [MIT License](LICENSE)
-- exe に入っている RE-USE の重み: NVIDIA の [OpenMDW License Agreement, version 1.1](https://huggingface.co/nvidia/NVIDIA-NemotronLabs-RE-USE)
-- そのほかのライブラリ: [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)
+- exe に同梱されている RE-USE の重み: NVIDIA の [OpenMDW License Agreement, version 1.1](https://huggingface.co/nvidia/NVIDIA-NemotronLabs-RE-USE)
+- その他のライブラリ: [THIRD-PARTY-NOTICES.txt](THIRD-PARTY-NOTICES.txt)
 
 `reuse-win-cli --license` でも表示できます。
 
-RE-USE のモデルの構造は [SEMamba](https://github.com/RoyChao19477/SEMamba)（MP-SENet・CMGAN をもとにしたもの）に基づいています。
+RE-USE のモデルの構造は [SEMamba](https://github.com/RoyChao19477/SEMamba)（MP-SENet・CMGAN から派生したもの）に基づいています。
 
 ## 開発
 
@@ -90,16 +90,16 @@ RE-USE のモデルの構造は [SEMamba](https://github.com/RoyChao19477/SEMamb
 
 - .NET 10 SDK
 - Windows SDK（シェーダーをコンパイルする `fxc.exe`）
-- Visual Studio の「C++ によるデスクトップ開発」（Native AOT でのリンクに使う）
+- Visual Studio の「C++ によるデスクトップ開発」（Native AOT のリンクに使用）
 
 ```powershell
 dotnet publish src/ReuseWinCli/ReuseWinCli.csproj -c Release -o publish
 ```
 
-`publish/reuse-win-cli.exe` ができます。初回のビルドでは、RE-USE の重みを Hugging Face から `.cache/` にダウンロードします（リビジョンを固定し、SHA256 で中身を確かめます）。
-手元の重みを使うときは `-p:ReuseModelPath=<絶対パス>` を付けます（相対パスはプロジェクトのフォルダ `src/ReuseWinCli` が基準になります）。
+`publish/reuse-win-cli.exe` が生成されます。初回のビルドでは、RE-USE の重みを Hugging Face から `.cache/` にダウンロードします（リビジョンを固定し、SHA256 で内容を検証します）。
+ローカルの重みを使用する場合は `-p:ReuseModelPath=<絶対パス>` を指定します（相対パスはプロジェクトのフォルダ `src/ReuseWinCli` が基準になります）。
 
-`'vswhere.exe' は、内部コマンドまたは外部コマンド…として認識されていません` というエラーでリンクに失敗するときは、`C:\Program Files (x86)\Microsoft Visual Studio\Installer` を `PATH` に足してからビルドしてください。
+`'vswhere.exe' は、内部コマンドまたは外部コマンド…として認識されていません` というエラーでリンクに失敗する場合は、`C:\Program Files (x86)\Microsoft Visual Studio\Installer` を `PATH` に追加してからビルドしてください。
 
 ### テスト
 
@@ -107,16 +107,16 @@ dotnet publish src/ReuseWinCli/ReuseWinCli.csproj -c Release -o publish
 dotnet test
 ```
 
-GPU の各カーネルを CPU の参照実装と比べるテストと、区間の分け方・混ぜ方のテストが走ります。
+GPU の各カーネルを CPU の参照実装と比較するテストと、チャンクの分割・合成のテストが実行されます。
 
-公式の PyTorch の出力と比べるテストは、環境変数 `REUSE_FIXTURE_DIR` に fixture のフォルダを指定したときだけ走ります。
-fixture は、公式の実装で同じ入力を処理して書き出した生の float32 の列（リトルエンディアン）です。
+公式の PyTorch の出力と比較するテストは、環境変数 `REUSE_FIXTURE_DIR` に fixture のフォルダを指定した場合のみ実行されます。
+fixture は、公式の実装で同じ入力を処理して出力した float32 の生データ（リトルエンディアン）です。
 
-| ファイル | 中身 |
+| ファイル | 内容 |
 |---|---|
 | `input.bin` / `input_8000.bin` | 入力の音声（44.1kHz / 8kHz、モノラル） |
-| `enhanced64.bin` / `enhanced64_8000.bin` | 公式の実装を float64 で動かした出力 |
-| `enc_out.bin` / `block0_out.bin` / `stack_out.bin` | 44.1kHz の入力でのエンコーダーの出力・TF-Mamba の 1 段目の出力・30 段の出力（`[時間][周波数][チャンネル]` の並び。形は 257 × 442 × 64） |
+| `enhanced64.bin` / `enhanced64_8000.bin` | 公式の実装を float64 で実行した出力 |
+| `enc_out.bin` / `block0_out.bin` / `stack_out.bin` | 44.1kHz の入力に対するエンコーダーの出力・TF-Mamba の 1 段目の出力・30 段の出力（`[時間][周波数][チャンネル]` の順。形状は 257 × 442 × 64） |
 
 ---
 
