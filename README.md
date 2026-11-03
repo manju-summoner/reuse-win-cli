@@ -62,7 +62,7 @@ reuse-win-cli 録音.mp4 -o きれいな声.wav -s 80
 ## 動作環境
 
 - Windows 10 / 11（64bit）。N エディションでは「メディア機能パック」（Media Feature Pack）が必要です。
-- Direct3D 11（機能レベル 11.0）に対応した GPU（NVIDIA・AMD・Intel のどれでも）
+- Direct3D 11（機能レベル 11.0）に対応した GPU（NVIDIA・AMD・Intel のどれでも）。GPU が複数ある PC（内蔵 GPU と外付け GPU のノート PC など）では、いちばん性能の高い GPU を使います（Windows の「設定 > ディスプレイ > グラフィックス」でこのツールに「省電力」を選んでも、性能の高い GPU を使います）。
 - GPU が使えない場合は CPU（WARP）で処理します。GPU に比べて大幅に遅く、音声の長さの 20 倍以上かかることがあります。
 
 ## 処理の中身
@@ -154,7 +154,7 @@ reuse-win-cli <input file>... [options]
 - **Input**: anything Windows Media Foundation can decode (wav, mp3, m4a, aac, mp4, mov, wma, flac, ...). For videos, the first audio track is used.
 - **Output**: 32-bit float WAV with the same sample rate and channel count as the input (rates outside 8–48 kHz are converted).
 - WAV files are limited to 4 GB, so audio longer than about 3 hours (48 kHz stereo) cannot be written.
-- **Requirements**: Windows 10/11 (64-bit; N editions need the Media Feature Pack) and a Direct3D 11 (feature level 11.0) GPU. Without a GPU, processing can take more than 20× the audio length.
+- **Requirements**: Windows 10/11 (64-bit; N editions need the Media Feature Pack) and a Direct3D 11 (feature level 11.0) GPU. On PCs with several GPUs (e.g. laptops with integrated and discrete GPUs), the highest-performance GPU is used, even if "Power saving" is selected for this tool in Windows graphics settings. Without a GPU, processing can take more than 20× the audio length.
 
 ### License
 
