@@ -6,8 +6,8 @@ using ReuseWinCli.Enhancement;
 namespace ReuseWinCli.Tests
 {
     /// <summary>
-    /// RE-USE のエンコーダー・デコーダーの部品（畳み込み・InstanceNorm と PReLU）と STFT を、乱数の入力で CPU の参照実装と比べる。
-    /// 参照実装は PyTorch と同じ [チャンネル][高さ][幅] の並び・[出力][入力][行][列] の重みで書き、GPU 側の並び替えとは独立にしてある
+    /// RE-USE のエンコーダー・デコーダーのレイヤー（畳み込み・InstanceNorm と PReLU）と STFT を、ランダムな入力で CPU の参照実装と比較する。
+    /// 参照実装は PyTorch と同じ [チャンネル][高さ][幅] のレイアウト・[出力][入力][行][列] の重みで実装し、GPU 側の並べ替えとは独立にしてある
     /// </summary>
     class ReUseKernelsTest
     {
@@ -18,19 +18,19 @@ namespace ReuseWinCli.Tests
 
         static readonly ConvCase[] ConvCases =
         [
-            // DenseBlock の 2 段目（時間方向に 2 倍の拡張・入力 128 チャンネルを 2 つのバッファから足し込む）
+            // DenseBlock の 2 層目（時間方向に dilation 2・入力 128 チャンネルを 2 つのバッファから累積加算する）
             new("dense", 128, 64, 3, 3, 1, 1, 2, 2, 1, 1, false, 2),
-            // DenseBlock の 4 段目（拡張 8・入力 4 つ）
+            // DenseBlock の 4 層目（dilation 8・入力バッファ 4 つ）
             new("dense8", 256, 64, 3, 3, 1, 1, 8, 8, 1, 1, false, 4),
             // dense_conv_1（入力 2 チャンネルの 1×1）
             new("input", 2, 64, 1, 1, 1, 1, 1, 0, 0, 1, false, 1),
-            // dense_conv_2（(1,3)・ストライド (4,2)・詰め物なし）
+            // dense_conv_2（(1,3)・ストライド (4,2)・パディングなし）
             new("downsample", 64, 64, 1, 3, 4, 2, 1, 0, 0, 1, false, 1),
             // up_conv1（周波数方向に 2 倍の SPConvTranspose2d）
             new("upsampleWidth", 64, 128, 1, 3, 1, 1, 1, 0, 1, 2, false, 1),
             // up_conv2（公式は時間と周波数を入れ替えてから (1,3) で 4 倍。GPU は (3,1) で時間方向に 4 倍）
             new("upsampleHeight", 64, 256, 1, 3, 1, 1, 1, 0, 1, 4, true, 1),
-            // 位相のデコーダーの最後（2 チャンネルの 1×1）
+            // 位相デコーダーの最終層（2 チャンネルの 1×1）
             new("final", 64, 2, 1, 1, 1, 1, 1, 0, 0, 1, false, 1),
         ];
 
@@ -133,13 +133,13 @@ namespace ReuseWinCli.Tests
 
             var error = actual.Zip(expected, (a, b) => Math.Abs(a - b)).Max();
             TestContext.Out.WriteLine($"max error {error:E3}");
-            // 平均 50 の入力は fp32 に入れた時点で 4e-6 の丸めがあり、標準偏差 0.006 で割ると 1e-3 程度になる
+            // 平均 50 の入力は fp32 に変換した時点で 4e-6 の丸め誤差があり、標準偏差 0.006 で割ると 1e-3 程度になる
             Assert.That(error, Is.LessThan(mean == 0 ? 1e-4 : 3e-3));
         }
 
         /// <summary>
-        /// STFT とモデルの入力（振幅の log1p と位相）を、素朴な倍精度の DFT と比べる。
-        /// 位相は丸めの残りの扱いで ±π が入れ替わりやすいので、torch と同じ規約（DC と Nyquist の虚部は 0、-0.0 は +0.0）を確かめる
+        /// STFT とモデルの入力（振幅の log1p と位相）を、素朴な倍精度の DFT と比較する。
+        /// 位相は丸め誤差の扱いで ±π が入れ替わりやすいので、torch と同じ規約（DC と Nyquist の虚部は 0、-0.0 は +0.0）を確認する
         /// </summary>
         [TestCase(11025)]
         [TestCase(8000)]
@@ -180,7 +180,7 @@ namespace ReuseWinCli.Tests
                     var phase = Math.Atan2(im + 0.0, re + 0.0);
                     var i = (t * (bins + 2) + k) * 2;
                     maxMagnitude = Math.Max(maxMagnitude, Math.Abs(input[i] - magnitude));
-                    // 振幅が小さいビンの位相は丸めで大きく動くので、振幅で重みを付けて比べる（±π の入れ替わりはどの振幅でも捕まえる）
+                    // 振幅が小さいビンの位相は丸め誤差で大きく変動するので、振幅で重み付けして比較する（±π の入れ替わりはどの振幅でも検出する）
                     var phaseError = Math.Abs(input[i + 1] - phase);
                     if (phaseError > 3 || Math.Sqrt(re * re + im * im) > 1e-6)
                         maxPhase = Math.Max(maxPhase, phaseError);
@@ -192,15 +192,15 @@ namespace ReuseWinCli.Tests
         }
 
         /// <summary>
-        /// 作業用バッファの見積もりに TF-Mamba の行数の上限（Dispatch のグループ数）も入っていること。
-        /// 入っていないと、高いサンプリングレートでチャンクを短くしないまま実行して例外になる
+        /// 作業用バッファの見積もりに TF-Mamba の行数の上限（Dispatch のグループ数）も含まれていること。
+        /// 含まれていないと、高いサンプリングレートでチャンクを短くしないまま実行して例外がスローされる
         /// </summary>
         [Test]
         public void LargestBufferAccountsForMambaRows()
         {
             Assert.That(ReUseModel.GetLargestBufferBytes(192000 * 5, 192000), Is.EqualTo(long.MaxValue));
             Assert.That(ReUseModel.GetLargestBufferBytes(192000 * 2, 192000), Is.LessThan(long.MaxValue));
-            // 48kHz・5 秒はエンコーダーの入口がいちばん大きい: (1001+2) フレーム × (961+2) ビン × 64 チャンネル × 4 バイト
+            // 48kHz・5 秒はエンコーダーの最初の畳み込み（dense_conv_1）の出力が最大: (1001+2) フレーム × (961+2) ビン × 64 チャンネル × 4 バイト
             Assert.That(ReUseModel.GetLargestBufferBytes(48000 * 5, 48000), Is.EqualTo(1003L * 963 * 64 * 4));
         }
 
@@ -215,7 +215,7 @@ namespace ReuseWinCli.Tests
             public ref double this[int c, int h, int w] => ref Data[(c * Height + h) * Width + w];
         }
 
-        /// <param name="factor">SPConvTranspose2d の倍率（出力チャンネルを分けて幅を factor 倍にする）。1 なら普通の畳み込み</param>
+        /// <param name="factor">SPConvTranspose2d の倍率（出力チャンネルを分割して幅を factor 倍にする）。1 なら通常の畳み込み</param>
         static Map ReferenceConv(Map x, float[] weight, float[] bias, int cout, int kh, int kw, int strideH, int strideW, int padH, int padW, int factor, int dilationH)
         {
             var cin = x.Channels;

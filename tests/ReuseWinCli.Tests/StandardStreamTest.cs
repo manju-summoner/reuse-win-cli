@@ -8,7 +8,7 @@ using ReuseWinCli.Audio;
 namespace ReuseWinCli.Tests
 {
     /// <summary>
-    /// 標準入出力（パイプ）での読み書き。パイプは 1 回の読み込みで届いた分しか返さず、シークもできないので、それを再現するストリームで確かめる
+    /// 標準入出力（パイプ）での読み書き。パイプは 1 回の読み込みで受信済みの分しか返さず、シークもできないので、それを再現するストリームで確認する
     /// </summary>
     class StandardStreamTest
     {
@@ -60,7 +60,7 @@ namespace ReuseWinCli.Tests
             return [.. result];
         }
 
-        /// <summary>WAV のバイト列を組み立てる。fmt の前に LIST チャンク（奇数の長さ）を置き、チャンクの並びに依存しないことも確かめる</summary>
+        /// <summary>WAV のバイト列を組み立てる。fmt の前に LIST チャンク（奇数の長さ）を配置し、チャンクの順序に依存しないことも確認する</summary>
         static byte[] BuildWav(ushort tag, int bits, int channels, int sampleRate, byte[] data, uint? dataSize = null, bool extensible = false)
         {
             using var stream = new MemoryStream();
@@ -110,7 +110,7 @@ namespace ReuseWinCli.Tests
         {
             int[] values = [0, 4194304, -4194304, 8388607, -8388608];
             var data = values.SelectMany(v => new[] { (byte)v, (byte)(v >> 8), (byte)(v >> 16) }).ToArray();
-            // 3 バイトのサンプルが 2 バイトずつ届いても、サンプルの途中で切れない
+            // 3 バイトのサンプルを 2 バイトずつ受信しても、サンプルの途中で切れない
             var reader = PcmStreamReader.OpenWav(new PipeStream(BuildWav(1, 24, 1, 48000, data), maxRead: 2));
             Assert.That(ReadAll(reader), Is.EqualTo(values.Select(v => v / 8388608f).ToArray()));
         }
@@ -136,7 +136,7 @@ namespace ReuseWinCli.Tests
             Assert.That(ReadAll(reader), Is.EqualTo(floats));
         }
 
-        /// <summary>data の大きさが分かっていれば、その後ろ（別のチャンク）は読まない。不明（0xFFFFFFFF）ならストリームの終わりまで読む</summary>
+        /// <summary>data のサイズが分かっていれば、その後ろ（別のチャンク）は読み込まない。不明（0xFFFFFFFF）ならストリームの終端まで読み込む</summary>
         [Test]
         public void HonorsDataSizeAndReadsToEndWhenUnknown()
         {
@@ -169,7 +169,7 @@ namespace ReuseWinCli.Tests
             Assert.That(ReadAll(s16), Is.EqualTo(new[] { 0.25f, -0.25f }));
         }
 
-        /// <summary>シークできない書き込み先には、大きさの欄を「不明」にし、fact を付けずに書く。読み直すと同じ値になる</summary>
+        /// <summary>シークできない書き込み先には、サイズフィールドを「不明」にし、fact チャンクを追加せずに書き込む。読み込み直すと同じ値になる</summary>
         [Test]
         public void WavToPipeUsesUnknownSizesAndRoundTrips()
         {

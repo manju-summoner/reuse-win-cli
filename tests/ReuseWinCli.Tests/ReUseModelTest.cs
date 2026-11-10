@@ -10,15 +10,15 @@ namespace ReuseWinCli.Tests
 {
     /// <summary>
     /// RE-USE の推論全体（STFT からデコーダー・iSTFT まで）を、公式の重みと float64 の PyTorch の出力で検証する。
-    /// 環境変数 REUSE_FIXTURE_DIR に、入力と float64 の PyTorch の出力（生の float 列）を置いたフォルダを指定したときだけ走る。
-    /// 乱数の重みでは全体を比べられない（学習していない深いネットワークは条件が悪く、丸め誤差だけで出力が別物になる）ので、
-    /// 部品ごとの検証は ReUseKernelsTest で行う
+    /// 環境変数 REUSE_FIXTURE_DIR に、入力と float64 の PyTorch の出力（生の float 列）を配置したフォルダを指定したときだけ実行する。
+    /// ランダムな重みでは全体を比較できない（未学習の深いネットワークは悪条件で、丸め誤差だけで出力が別物になる）ので、
+    /// コンポーネントごとの検証は ReUseKernelsTest で行う
     /// </summary>
     class ReUseModelTest
     {
         [TestCase("", 44100, false)]
         [TestCase("_8000", 8000, false)]
-        // WARP は 44.1kHz の 5 秒に 2 分かかるので、短い 8kHz だけを確かめる
+        // WARP は 44.1kHz の 5 秒に 2 分かかるので、短い 8kHz だけを確認する
         [TestCase("_8000", 8000, true)]
         public void MatchesPyTorchEndToEnd(string suffix, int sampleRate, bool warp)
         {
@@ -45,8 +45,8 @@ namespace ReuseWinCli.Tests
         }
 
         /// <summary>
-        /// チャンクに分けて（2 秒のチャンクを半分ずつ重ねて）通したときと、1 回で通したときとの差を見る。
-        /// チャンクの境目では前後の文脈が変わるので一致はしないが、位置のずれや重ね合わせの誤りがあれば 0dB 近くまで落ちる
+        /// チャンクに分割して（2 秒のチャンクを半分ずつ重ねて）推論したときと、1 回で推論したときとの差を見る。
+        /// チャンクの境界では前後の文脈が変わるので一致はしないが、位置のずれや合成の誤りがあれば SNR が 0dB 近くまで低下する
         /// </summary>
         [Test]
         public void ChunkedStaysCloseToSinglePass()

@@ -4,7 +4,7 @@ using ReuseWinCli.Audio;
 
 namespace ReuseWinCli.Tests
 {
-    /// <summary>配列から読む。maxRead を指定すると 1 回に返す数を抑え、チャンネルの区切りに揃わない読み方を再現する</summary>
+    /// <summary>配列から読み込む。maxRead を指定すると 1 回に返す数を制限し、チャンネルの境界にアラインしない読み込みを再現する</summary>
     sealed class MemoryReader(float[] samples, int sampleRate, int channels, int maxRead = int.MaxValue) : IAudioReader
     {
         int position;

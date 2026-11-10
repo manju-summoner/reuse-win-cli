@@ -5,8 +5,8 @@ using Vortice.DXGI;
 namespace ReuseWinCli.Tests
 {
     /// <summary>
-    /// 推論のデバイスを、デバイスを作れる GPU のうち、いちばん性能の高いもので作る（ハイブリッド GPU のノート PC で内蔵 GPU を使わない）。
-    /// GPU が 1 つの PC では、既定のアダプターと同じものになるので、取り違えても赤くならない
+    /// 推論のデバイスを、デバイスを作成できる GPU のうち、最も性能の高いもので作成する（ハイブリッド GPU のノート PC で内蔵 GPU を使わない）。
+    /// GPU が 1 つの PC では、既定のアダプターと同じものになるので、取り違えてもテストは失敗しない
     /// </summary>
     class ReUseComputeDeviceTest
     {
@@ -37,7 +37,7 @@ namespace ReuseWinCli.Tests
             using var device = ReUseComputeDevice.Create();
             if (expected is null)
             {
-                // デバイスを作れるハードウェアの GPU が無い（GitHub Actions のランナーなど）
+                // デバイスを作成できるハードウェアの GPU が無い（GitHub Actions のランナーなど）
                 Assert.That(device.IsWarp, Is.True);
                 return;
             }
@@ -48,7 +48,7 @@ namespace ReuseWinCli.Tests
             TestContext.Out.WriteLine($"actual {actual.Description1.Description}");
             Assert.That(device.IsWarp, Is.False);
             Assert.That(actual.Description1.Luid, Is.EqualTo(expected.Value));
-            // 期待値は実装と同じ列挙で求めているので、ソフトウェアのアダプター（Basic Render Driver）を除けているかは別に確かめる
+            // 期待値は実装と同じ列挙方法で求めているので、ソフトウェアアダプター（Basic Render Driver）を除外できているかは別に確認する
             Assert.That(actual.Description1.Flags & AdapterFlags.Software, Is.EqualTo(AdapterFlags.None));
         }
     }

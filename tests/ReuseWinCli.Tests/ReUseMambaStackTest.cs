@@ -11,8 +11,8 @@ namespace ReuseWinCli.Tests
 {
     /// <summary>
     /// RE-USE の TF-Mamba ブロックの GPU 実装の検証。
-    /// 乱数の重みで、PyTorch の nn.Module と同じ手順（系列の取り出し・反転・連結）で書いた CPU の参照実装と比べる。
-    /// GPU 側は系列を並べ替えずに行の歩幅でたどり、後ろ向きの枝も反転せずに逆からたどるので、参照実装とは別の書き方になっている。
+    /// ランダムな重みで、PyTorch の nn.Module と同じ手順（系列の取り出し・反転・連結）で実装した CPU の参照実装と比較する。
+    /// GPU 側は系列を並べ替えずに行のストライドで走査し、逆方向も反転せずに逆順に走査するので、参照実装とは別の実装になっている。
     /// </summary>
     class ReUseMambaStackTest
     {
@@ -52,8 +52,8 @@ namespace ReuseWinCli.Tests
         }
 
         /// <summary>
-        /// 公式の重みと PyTorch で出した中間テンソルで、30 段を通した結果を比べる。
-        /// 環境変数 REUSE_FIXTURE_DIR に fixture（PyTorch で出した中間テンソル）のフォルダを指定したときだけ走る
+        /// 公式の重みと PyTorch で出力した中間テンソルで、30 ブロックを通した結果を比較する。
+        /// 環境変数 REUSE_FIXTURE_DIR に fixture（PyTorch で出力した中間テンソル）のフォルダを指定したときだけ実行する
         /// </summary>
         [Test]
         public void MatchesPyTorchWithOfficialWeights()
@@ -63,7 +63,7 @@ namespace ReuseWinCli.Tests
             var encoded = Fixture.ReadFloats(Path.Combine(fixture, "enc_out.bin"));
             var block0 = Fixture.ReadFloats(Path.Combine(fixture, "block0_out.bin"));
             var stackOut = Fixture.ReadFloats(Path.Combine(fixture, "stack_out.bin"));
-            // meta.json の enc_out の形 [frames, bins, 64]
+            // meta.json の enc_out の形状 [frames, bins, 64]
             const int frames = 257;
             const int bins = 442;
             Assert.That(encoded, Has.Length.EqualTo(frames * bins * C));
@@ -133,7 +133,7 @@ namespace ReuseWinCli.Tests
             tensors[prefix + "out_proj.weight"] = new([C, Inner], Uniform(random, C * Inner, -0.1, 0.1));
         }
 
-        // ---- PyTorch の SEMamba（mamba_block2_SEMamba.py）をそのまま書き写した参照実装 ----
+        // ---- PyTorch の SEMamba（mamba_block2_SEMamba.py）をそのまま移植した参照実装 ----
 
         internal static float[] ReferenceStack(Dictionary<string, SafeTensor> t, float[] input, int frames, int bins, int blockCount)
         {

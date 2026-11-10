@@ -3,7 +3,7 @@ using NUnit.Framework;
 
 namespace ReuseWinCli.Tests
 {
-    /// <summary>コマンドラインの解釈（標準入出力のオプションの組み合わせ）</summary>
+    /// <summary>コマンドライン引数のパース（標準入出力のオプションの組み合わせ）</summary>
     class ProgramOptionsTest
     {
         static Program.Options Parse(params string[] args) => Program.Parse(args, "test")!;
@@ -53,7 +53,7 @@ namespace ReuseWinCli.Tests
             AssertUsageError(Messages.InvalidNumber("--rate", "0", 8000, 48000), "-", "--in-format", "f32le", "--rate", "0", "--channels", "1");
             AssertUsageError(Messages.InvalidNumber("--rate", "96000", 8000, 48000), "-", "--in-format", "f32le", "--rate", "96000", "--channels", "1");
             AssertUsageError(Messages.InvalidNumber("--channels", "33", 1, 32), "-", "--in-format", "f32le", "--rate", "48000", "--channels", "33");
-            // 既定値と同じ wav でも、ファイルの入力に標準入力のオプションは付けられない
+            // 既定値と同じ wav でも、ファイル入力には標準入力用のオプションを指定できない
             AssertUsageError(Messages.StdinOptionsNeedStdin, "a.wav", "--in-format", "wav");
         }
 

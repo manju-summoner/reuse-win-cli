@@ -7,9 +7,9 @@ using ReuseWinCli.Enhancement;
 namespace ReuseWinCli.Tests
 {
     /// <summary>
-    /// チャンクの区切り方と重ね合わせを、GPU を使わない偽の推論で検証する。
-    /// 期待値は、音声全体を先に読んでチャンクごとに推論してから混ぜる素直な書き方で求め、読みながら書く本体の実装とは独立にしてある。
-    /// 混ぜ方は YMM4 の音声エフェクト「AIノイズ除去（RE-USE）」と同じ式（Hann 窓の重みの加重平均と、元の音との線形の混合）
+    /// チャンクの分割と合成を、GPU を使わないフェイクの推論で検証する。
+    /// 期待値は、音声全体を先に読み込んでチャンクごとに推論してから合成する素朴な実装で求め、読み込みながら書き込む本体の実装とは独立にしてある。
+    /// 合成は YMM4 の音声エフェクト「AIノイズ除去（RE-USE）」と同じ式（Hann 窓の重みによる加重平均と、元の音声との線形の混合）
     /// </summary>
     class ChunkedEnhancerTest
     {
@@ -18,7 +18,7 @@ namespace ReuseWinCli.Tests
         const int SampleRate = 8000;
 
         /// <summary>
-        /// チャンクの中の位置と長さで値が変わる偽の推論。チャンクの位置や長さを取り違えると出力が変わる
+        /// チャンク内の位置と長さで値が変わるフェイクの推論。チャンクの位置や長さを取り違えると出力が変わる
         /// </summary>
         sealed class FakeEnhancer : ISpeechEnhancer
         {
@@ -55,7 +55,7 @@ namespace ReuseWinCli.Tests
             var enhancer = new FakeEnhancer();
             var output = new MemoryWriter();
 
-            // 1 回に 7 サンプルずつしか返さない入力で、チャンネルの区切りに揃わない読み方にする
+            // 1 回に 7 サンプルずつしか返さない入力で、チャンネルの境界にアラインしない読み込みにする
             new ChunkedEnhancer(enhancer).Process(new MemoryReader(input, SampleRate, channels, maxRead: 7), output, (float)strength, null, default);
 
             var expected = Reference(input, frames, channels, (float)strength);
@@ -119,7 +119,7 @@ namespace ReuseWinCli.Tests
         }
 
         /// <summary>
-        /// 左右で中身の違うステレオで、両方のチャンネルの推論が中止されたとき、まとめた例外ではなく中止として伝わる（呼び出し元が「中止しました」と出せる）
+        /// 左右で内容の違うステレオで、両方のチャンネルの推論が中止されたとき、AggregateException ではなく中止の例外としてスローされる（呼び出し元が「中止しました」と表示できる）
         /// </summary>
         [Test]
         public void CancellationOfSeveralChannelsIsReportedAsCancellation()
@@ -133,7 +133,7 @@ namespace ReuseWinCli.Tests
                 Throws.InstanceOf<OperationCanceledException>());
         }
 
-        /// <summary>両方のチャンネルがそろって推論に入ってから中止し、どちらも中止の例外で終わる</summary>
+        /// <summary>両方のチャンネルの推論が開始してから中止し、どちらも OperationCanceledException で終了する</summary>
         sealed class CancellingEnhancer(System.Threading.CancellationTokenSource cancellation) : ISpeechEnhancer
         {
             readonly System.Threading.Barrier barrier = new(2);

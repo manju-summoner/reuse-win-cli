@@ -9,8 +9,8 @@ using ReuseWinCli.Audio;
 namespace ReuseWinCli.Tests
 {
     /// <summary>
-    /// パイプの相手が開いたまま送らない・読まないときでも、中止で読み書きの待ちから抜けられる。
-    /// 中止した時点で読み書きが始まっていない場合（推論を待っている間に Ctrl+C が押された場合）も含む
+    /// パイプの相手が開いたまま書き込まない・読み取らないときでも、中止で読み書きの待機から抜けられる。
+    /// 中止した時点で読み書きが開始していない場合（推論を待っている間に Ctrl+C が押された場合）も含む
     /// </summary>
     class CancellableStreamTest
     {
@@ -26,14 +26,14 @@ namespace ReuseWinCli.Tests
             var stream = new CancellableStream(reader, cancellation.Token);
 
             var read = Task.Run(() => stream.Read(new byte[16], 0, 16));
-            Assert.That(read.Wait(Blocked), Is.False, "書き手が開いたままなので、中止するまで返らないはず");
+            Assert.That(read.Wait(Blocked), Is.False, "書き込み側が開いたままなので、中止するまで返らないはず");
 
             cancellation.Cancel();
             Assert.That(() => read.Wait(Released), Throws.InstanceOf<AggregateException>().With.InnerException.InstanceOf<OperationCanceledException>());
         }
 
         /// <summary>
-        /// 待つのをやめた後に届いたデータで、呼び出し元の配列が書き換わらない（読み込みのスレッドは止まったまま残り、後で完了するため）
+        /// 待機をやめた後に受信したデータで、呼び出し元の配列が書き換わらない（読み込みのスレッドはブロックしたまま残り、後で完了するため）
         /// </summary>
         [Test]
         public void AbandonedReadDoesNotTouchCallerBuffer()
@@ -49,7 +49,7 @@ namespace ReuseWinCli.Tests
             cancellation.Cancel();
             Assert.That(() => read.Wait(Released), Throws.InstanceOf<AggregateException>());
 
-            // 止まったままの読み込みが、ここで送ったデータを受け取って完了する
+            // ブロックしたままの読み込みが、ここで書き込んだデータを受信して完了する
             writer.Write([0xAA, 0xBB, 0xCC, 0xDD], 0, 4);
             writer.Flush();
             Thread.Sleep(300);
@@ -77,9 +77,9 @@ namespace ReuseWinCli.Tests
             using var cancellation = new CancellationTokenSource();
             var stream = new CancellableStream(writer, cancellation.Token);
 
-            // 読み手が読まないので、パイプのバッファーが埋まったところで書き込みが止まる
+            // 読み取り側が読み取らないので、パイプのバッファが埋まった時点で書き込みがブロックする
             var write = Task.Run(() => stream.Write(new byte[16 * 1024 * 1024], 0, 16 * 1024 * 1024));
-            Assert.That(write.Wait(Blocked), Is.False, "読み手が読まないので、中止するまで返らないはず");
+            Assert.That(write.Wait(Blocked), Is.False, "読み取り側が読み取らないので、中止するまで返らないはず");
 
             cancellation.Cancel();
             Assert.That(() => write.Wait(Released), Throws.InstanceOf<AggregateException>().With.InnerException.InstanceOf<OperationCanceledException>());
@@ -98,7 +98,7 @@ namespace ReuseWinCli.Tests
             Assert.That(input.Read(buffer, 0, buffer.Length), Is.EqualTo(3));
             Assert.That(buffer[..3], Is.EqualTo(new byte[] { 1, 2, 3 }));
 
-            // 読み手が閉じた後の書き込みのエラーは、包まずにそのまま伝わる（呼び出し元がパイプの切断として見分ける）
+            // 読み取り側が閉じた後の書き込みエラーは、ラップされずにそのままスローされる（呼び出し元がパイプの切断として判別する）
             reader.Dispose();
             Assert.That(() => output.Write([4], 0, 1), Throws.InstanceOf<IOException>());
         }

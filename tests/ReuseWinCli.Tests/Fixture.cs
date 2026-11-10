@@ -9,13 +9,13 @@ using ReuseWinCli.Enhancement;
 namespace ReuseWinCli.Tests
 {
     /// <summary>
-    /// 公式の重みと PyTorch の出力で比べるテストの入力。
-    /// 重みは exe に埋め込んだもの（ビルド時に Hugging Face から取ってきたもの）を使う。
-    /// PyTorch の出力（生の float 列）は配布できないので、環境変数 REUSE_FIXTURE_DIR でフォルダを指定したときだけ使う。中身は README の「テスト」
+    /// 公式の重みと PyTorch の出力で比較するテストの入力。
+    /// 重みは exe に埋め込んだもの（ビルド時に Hugging Face からダウンロードしたもの）を使う。
+    /// PyTorch の出力（生の float 列）は配布できないので、環境変数 REUSE_FIXTURE_DIR でフォルダを指定したときだけ使う。内容は README の「テスト」
     /// </summary>
     internal static class Fixture
     {
-        /// <summary>fixture のフォルダ。指定されていない・ファイルが無いときはテストを飛ばす</summary>
+        /// <summary>fixture のフォルダ。指定されていない・ファイルが無いときはテストをスキップする</summary>
         public static string RequireDirectory(string requiredFile)
         {
             var root = Environment.GetEnvironmentVariable("REUSE_FIXTURE_DIR");

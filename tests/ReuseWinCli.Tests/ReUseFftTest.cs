@@ -7,9 +7,9 @@ using ReuseWinCli.Enhancement;
 namespace ReuseWinCli.Tests
 {
     /// <summary>
-    /// STFT の FFT を、倍精度の素朴な DFT と比べる。
+    /// STFT の FFT を、倍精度の素朴な DFT と比較する。
     /// 長さはサンプリングレートで決まる（48kHz は 1920、44.1kHz は 1764、11025Hz は 442）ので、2 のべき乗でない長さと、
-    /// 小さな素因数に分けない長さ（素因数が大きいとき）の両方を確かめる
+    /// 小さな素因数に分解しない長さ（素因数が大きいとき）の両方を確認する
     /// </summary>
     class ReUseFftTest
     {

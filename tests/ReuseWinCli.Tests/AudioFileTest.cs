@@ -8,7 +8,7 @@ using Vortice.MediaFoundation;
 namespace ReuseWinCli.Tests
 {
     /// <summary>
-    /// 書き出した WAV を Media Foundation で読み直して、中身と形式が保たれることを確かめる（WAV の書き方と、読み込みの両方の検証になる）
+    /// 書き出した WAV を Media Foundation で読み込み直して、内容と形式が保たれることを確認する（WAV の書き込みと、読み込みの両方の検証になる）
     /// </summary>
     class AudioFileTest
     {
