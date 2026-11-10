@@ -7,15 +7,15 @@ namespace ReuseWinCli.Enhancement
     /// <summary>
     /// STFT に使う倍精度の FFT（X[k] = Σ x[n] e^{-2πikn/N}、スケーリングなし）。
     /// 長さはサンプリングレートで決まり 2 のべき乗にならない（48kHz は 1920 = 2⁷·3·5）。MathNet の Fourier.Forward は
-    /// 2 のべき乗でない長さを Bluestein 法で計算するので遅い。長さを小さな素因数に分け、Stockham の自動整列の形で各段を計算する。
-    /// 素因数が大きいと 1 段の計算量（長さ × 素因数）が Bluestein 法より重くなるので、そのときは MathNet で計算する
+    /// 2 のべき乗でない長さを Bluestein 法で計算するので遅い。長さを小さな素因数に分解し、Stockham の自動ソート（autosort）アルゴリズムで各ステージを計算する。
+    /// 素因数が大きいと 1 ステージの計算量（長さ × 素因数）が Bluestein 法より大きくなるので、そのときは MathNet で計算する
     /// </summary>
     internal sealed class ReUseFft
     {
         const int MaxRadix = 64;
 
         readonly int[]? factors;
-        // 各段の p 点の DFT の係数 [r·p + t] = e^{-2πirt/p}
+        // 各ステージの p 点 DFT の係数 [r·p + t] = e^{-2πirt/p}
         readonly double[][] stageCos = [];
         readonly double[][] stageSin = [];
         // e^{-2πik/N} = cos[k] + i·sin[k]
@@ -92,7 +92,7 @@ namespace ReuseWinCli.Enhancement
             return [.. result];
         }
 
-        /// <summary>re と im（どちらも Length 個）をその場で変換する</summary>
+        /// <summary>re と im（どちらも Length 個）をインプレースで変換する</summary>
         /// <param name="workRe">作業用。Length 個以上</param>
         /// <param name="workIm">作業用。Length 個以上</param>
         public void Forward(double[] re, double[] im, double[] workRe, double[] workIm)
@@ -112,7 +112,7 @@ namespace ReuseWinCli.Enhancement
             Span<double> rotationRe = stackalloc double[MaxRadix];
             Span<double> rotationIm = stackalloc double[MaxRadix];
             var (sourceRe, sourceIm, targetRe, targetIm) = (re, im, workRe, workIm);
-            // n: この段で残っている系列の長さ、stride: これまでの段の素因数の積
+            // n: このステージで残っている系列の長さ、stride: これまでのステージの素因数の積
             var n = Length;
             var stride = 1;
             for (var stage = 0; stage < factors.Length; stage++)
@@ -146,7 +146,7 @@ namespace ReuseWinCli.Enhancement
                         }
                         else if (p == 4)
                         {
-                            // e^{-2πirt/4} は 1, -i, -1, i なので掛け算が要らない
+                            // e^{-2πirt/4} は 1, -i, -1, i なので乗算が不要
                             var sum02Re = valueRe[0] + valueRe[2];
                             var sum02Im = valueIm[0] + valueIm[2];
                             var diff02Re = valueRe[0] - valueRe[2];

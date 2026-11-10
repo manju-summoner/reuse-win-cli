@@ -3,8 +3,8 @@ using System.Runtime.InteropServices;
 namespace ReuseWinCli
 {
     /// <summary>
-    /// 画面に出す文言。Windows の表示言語が日本語なら日本語、それ以外は英語にする。
-    /// InvariantGlobalization を有効にしているので CultureInfo からは表示言語が取れず、Win32 の API で調べる
+    /// コンソールに表示するメッセージ。Windows の表示言語が日本語なら日本語、それ以外は英語にする。
+    /// InvariantGlobalization を有効にしているので CultureInfo からは表示言語を取得できず、Win32 API で取得する
     /// </summary>
     internal static partial class Messages
     {

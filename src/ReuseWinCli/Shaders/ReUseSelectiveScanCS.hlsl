@@ -1,11 +1,11 @@
-// RE-USE の Mamba の selective scan（Mamba-1）。1スレッドが1系列の1チャンネルを受け持ち、状態をレジスターに持って系列を順にたどる。
+// RE-USE の Mamba の selective scan（Mamba-1）。1スレッドが1系列の1チャンネルを担当し、状態をレジスターに保持して系列を順に走査する。
 // 状態を全位置ぶんメモリーに書き出す並列 scan より、メモリーの読み書きが状態の次元（16）分の1で済む。
 //   Δ_t = softplus(dt_proj(dbl_t[0..DT_RANK)) + bias)
 //   h_t = exp(Δ_t A) h_{t-1} + Δ_t B_t u_t
 //   y_t = (C_t · h_t + D u_t) · SiLU(z_t)
 // Δ は dt_proj（入力 4 つ）をここで求め、行数 × チャンネル数の Δ をメモリーに書き出して読み直す往復を省く。
 // 系列は「行 = 系列番号 × SeqStride + 位置 × PosStride」で並んでいるものとする。
-// Direction が -1 のときは系列を逆向きにたどる（双方向 Mamba の後ろ向きの枝。反転した系列を前向きに処理するのと同じ結果になる）。
+// Direction が -1 のときは系列を逆順に走査する（双方向 Mamba の逆方向。反転した系列を順方向に処理するのと同じ結果になる）。
 
 cbuffer Constants : register(b0)
 {
@@ -66,7 +66,7 @@ void main(uint3 id : SV_DispatchThreadID)
         [unroll] for (uint k = 0; k < DT_RANK; k++)
             dt = mad(Dbl[dbl + k], dtWeight[k], dt);
         dt += dtBias;
-        // PyTorch の softplus と同じく、大きい値はそのまま返す（exp の桁あふれを避ける）
+        // PyTorch の softplus と同じく、大きい値はそのまま返す（exp のオーバーフローを避ける）
         dt = dt > 20 ? dt : log(1 + exp(dt));
         float du = dt * u;
         float y = 0;

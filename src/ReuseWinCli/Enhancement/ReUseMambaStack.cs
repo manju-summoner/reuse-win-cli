@@ -5,9 +5,9 @@ using System.Runtime.InteropServices;
 namespace ReuseWinCli.Enhancement
 {
     /// <summary>
-    /// RE-USE の TF-Mamba ブロック（時間方向と周波数方向の双方向 Mamba）30 段を GPU で実行する。
-    /// 活性は [時間][周波数][チャンネル] の並び（チャンネルが最も内側）で持つ。
-    /// 時間方向の系列も周波数方向の系列も同じ並びのまま、行の歩幅を変えてたどるので、並べ替えは要らない。
+    /// RE-USE の TF-Mamba ブロック（時間方向と周波数方向の双方向 Mamba）30 個を GPU で実行する。
+    /// アクティベーションは [時間][周波数][チャンネル] のレイアウト（チャンネルが最も内側）で保持する。
+    /// 時間方向の系列も周波数方向の系列も同じレイアウトのまま、行のストライドを変えて走査するので、並べ替えは不要。
     /// </summary>
     internal sealed class ReUseMambaStack : IDisposable
     {
@@ -54,15 +54,15 @@ namespace ReuseWinCli.Enhancement
 
         /// <summary>
         /// 行数の上限。この範囲なら、Linear と LayerNorm（64 行で 1 グループ）の Dispatch はグループ数の上限（65535）に収まる。
-        /// selective scan は 1 系列で 1 グループで、系列の数（ビン数かフレーム数）はチャンクの長さの上限があるので届かない。
-        /// 作業用バッファの大きさ（行数 × Inner × 4 バイト）は、呼び出し側が <see cref="GetLargestBufferBytes"/> で GPU の予算に収める
+        /// selective scan は 1 系列で 1 グループで、系列の数（ビン数かフレーム数）はチャンクの長さに上限があるので、グループ数の上限に達しない。
+        /// 作業用バッファのサイズ（行数 × Inner × 4 バイト）は、呼び出し側が <see cref="GetLargestBufferBytes"/> で GPU メモリーの予算に収める
         /// </summary>
         public const int MaxRows = 65535 * 4;
 
-        /// <summary>rows 行を処理するときの、いちばん大きい作業用バッファのバイト数</summary>
+        /// <summary>rows 行を処理するときの、最大の作業用バッファのバイト数</summary>
         public static long GetLargestBufferBytes(int rows) => (long)rows * Inner * sizeof(float);
 
-        /// <param name="activation">[frames][bins][Channels] の活性。結果で上書きする</param>
+        /// <param name="activation">[frames][bins][Channels] のアクティベーション。結果で上書きする</param>
         public void Run(ReUseBuffer activation, int frames, int bins)
         {
             var rows = frames * bins;
@@ -97,7 +97,7 @@ namespace ReuseWinCli.Enhancement
             Linear(activation, Channels, 0, weights.InX, null, null, 0, 0, xBuffer!, Inner, 0, rows, Inner, Channels);
             Linear(activation, Channels, 0, weights.InZ, null, null, 0, 0, zBuffer!, Inner, 0, rows, Inner, Channels);
 
-            // 深さ方向の因果畳み込みと SiLU は x_proj の読み込みの中で行い、結果を convBuffer にも書く
+            // depthwise の因果畳み込みと SiLU は x_proj の入力の読み込み時に行い、結果を convBuffer にも書き込む
             var convConstants = new LinearConstants(
                 (uint)rows, DblWidth, Inner, 0,
                 Inner, 0, DblWidth, 0,
@@ -112,7 +112,7 @@ namespace ReuseWinCli.Enhancement
             device.Dispatch("ReUseSelectiveScanCS", scanConstants, Inner / 64, sequences,
                 [convBuffer, dblBuffer, zBuffer, weights.A, weights.D, weights.DtWeight, weights.DtBias], scanBuffer!);
 
-            // 双方向 Mamba の各枝は入力を残差として足す（out = Mamba(x) + x）
+            // 双方向 Mamba の各方向は入力を残差として加算する（out = Mamba(x) + x）
             Linear(scanBuffer!, Inner, 0, weights.OutProj, null, activation, Channels, 0,
                 concatBuffer!, Channels * 2, concatOffset, rows, Channels, Inner);
         }
@@ -150,7 +150,7 @@ namespace ReuseWinCli.Enhancement
             capacityRows = rows;
         }
 
-        /// <summary>作業用バッファを手放す。次の <see cref="Run"/> で作り直す</summary>
+        /// <summary>作業用バッファを解放する。次の <see cref="Run"/> で作り直す</summary>
         public void ReleaseWork() => DisposeWork();
 
         void DisposeWork()

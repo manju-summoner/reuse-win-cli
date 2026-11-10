@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace ReuseWinCli.Audio
 {
-    /// <summary>ヘッダーの無い 32bit float（リトルエンディアン、チャンネル交互）を書く</summary>
+    /// <summary>ヘッダーの無い 32bit float（リトルエンディアン、インターリーブ）を書き込む</summary>
     internal sealed class RawWriter(Stream stream) : IAudioOutput
     {
         readonly bool streaming = !stream.CanSeek;
@@ -12,7 +12,7 @@ namespace ReuseWinCli.Audio
         public void Write(ReadOnlySpan<float> samples)
         {
             stream.Write(MemoryMarshal.AsBytes(samples));
-            // パイプの先へ、チャンクを書くたびに届ける
+            // パイプの後段にすぐ渡るよう、チャンクを書き込むたびにフラッシュする
             if (streaming)
                 stream.Flush();
         }

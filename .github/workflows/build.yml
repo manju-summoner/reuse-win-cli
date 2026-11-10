@@ -21,7 +21,7 @@ jobs:
         with:
           dotnet-version: '10.0.x'
 
-      # RE-USE の重み（38MB）はビルドのたびに Hugging Face から取らず、Model.targets（リビジョンとハッシュ）が変わるまでキャッシュする
+      # RE-USE の重み（38MB）はビルドのたびに Hugging Face からダウンロードせず、Model.targets（リビジョンとハッシュ）が変わるまでキャッシュする
       - uses: actions/cache@v6
         with:
           path: .cache
@@ -37,8 +37,8 @@ jobs:
           $version = if ($env:REF -like 'refs/tags/v*') { $env:REF_NAME.Substring(1) } else { '0.0.0-dev' }
           "value=$version" >> $env:GITHUB_OUTPUT
 
-      # ランナーには GPU が無いので、GPU のテストは WARP（ソフトウェアの D3D11）で走る。
-      # PyTorch の出力と比べるテストは fixture が無いので飛ばされる
+      # ランナーには GPU が無いので、GPU のテストは WARP（ソフトウェア実装の D3D11）で実行される。
+      # PyTorch の出力と比較するテストは fixture が無いのでスキップされる
       - name: Test
         run: dotnet test -c Release
 

@@ -16,7 +16,7 @@
     <PublishAot>true</PublishAot>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <SelfContained>true</SelfContained>
-    <!-- Media Foundation と D3D11 は COM の参照カウントを Vortice が自前で扱うので、組み込みの COM 相互運用は使わない -->
+    <!-- Media Foundation と D3D11 は COM の参照カウントを Vortice が自前で管理するので、組み込みの COM 相互運用は使わない -->
     <BuiltInComInteropSupport>false</BuiltInComInteropSupport>
   </PropertyGroup>
 

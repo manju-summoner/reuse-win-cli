@@ -1,11 +1,11 @@
 // RE-USE（音声ノイズ除去）の全結合層。行ごとに Y = X・Wᵀ (+ bias) を求める。
-// 入出力は行の幅と列の位置を指定できるので、幅の広いバッファの一部の列を読み書きできる。
-// W は PyTorch の nn.Linear と同じ [N][K] の並び。
-// CAUSAL_CONV を定義してコンパイルしたもの（ReUseLinearConvCS）は、X を Mamba の深さ方向の因果畳み込み（カーネル幅 4）と SiLU に
-// 通しながら読み、畳み込みの結果を ConvOut にも書く（x_proj。畳み込みの結果は selective scan も読む）。
-// 分岐で切り替えると、使わない畳み込みの分までレジスターを取り、ほかの全結合層が遅くなるので、別のシェーダーにしている。
-// 畳み込みの系列のたどり方は ReUseSelectiveScanCS と同じで、位置は (行 / ConvPosStride) % ConvLength、
-// ConvDirection が -1 なら系列を逆向きにたどる。ConvOut を書くのは列のタイルの先頭のグループだけなので、N ≤ TILE のとき無駄がない。
+// 入出力は行のストライドと列のオフセットを指定できるので、幅の広いバッファの一部の列を読み書きできる。
+// W は PyTorch の nn.Linear と同じ [N][K] のレイアウト。
+// CAUSAL_CONV を定義してコンパイルしたもの（ReUseLinearConvCS）は、X に Mamba の depthwise の因果畳み込み（カーネル幅 4）と SiLU を
+// 適用しながら読み込み、畳み込みの結果を ConvOut にも書き込む（x_proj。畳み込みの結果は selective scan も読み込む）。
+// 分岐で切り替えると、使わない畳み込みの分までレジスターを消費し、ほかの全結合層が遅くなるので、別のシェーダーにしている。
+// 畳み込みの系列の走査順は ReUseSelectiveScanCS と同じで、位置は (行 / ConvPosStride) % ConvLength、
+// ConvDirection が -1 なら系列を逆順に走査する。ConvOut を書き込むのは列のタイルの先頭のグループだけなので、N ≤ TILE のとき無駄がない。
 
 cbuffer Constants : register(b0)
 {
@@ -45,27 +45,27 @@ RWStructuredBuffer<float> ConvOut : register(u1);
 #define TILE 64
 #define TILE_K 32
 #define TILE4 (TILE / 4)
-// 1 スレッドが 1 回に置く float4 の数
+// 1 スレッドが 1 回に共有メモリーに格納する float4 の数
 #define LOADS (TILE_K * TILE4 / 256)
 
-// スレッドは 4 行 × 4 列を受け持ち、共有メモリーから float4 で読む。
-// 行の長さを float4 1 つ分余らせて、書き込むときのバンクの衝突を避ける
+// スレッドは 4 行 × 4 列を担当し、共有メモリーから float4 で読み込む。
+// 行を float4 1 つ分パディングして、書き込み時のバンクコンフリクトを避ける
 groupshared float4 tileX[TILE_K][TILE4 + 1];
 groupshared float4 tileW[TILE_K][TILE4 + 1];
 
 [numthreads(16, 16, 1)]
 void main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
 {
-    // 同じ行の列のタイルを続けて走らせ、X を L2 に残ったまま読む
+    // 同じ行の列のタイルを連続して実行し、L2 キャッシュに残っている X を読み込む
     uint rowBase = group.y * TILE;
     uint colBase = group.x * TILE;
     uint local = thread.y * 16 + thread.x;
-    // 隣り合うスレッドが隣り合う k を読み（グローバルメモリーの読み込みをまとめるため）、4 行（4 列）分を float4 にして置く
+    // 隣接するスレッドが隣接する k を読み込み（グローバルメモリーへのアクセスをコアレッシングするため）、4 行（4 列）分を float4 にまとめて格納する
     uint loadK = local % TILE_K;
     uint loadQ = local / TILE_K;
 #ifdef CAUSAL_CONV
     bool writeConv = group.x == 0;
-    // 読み込みで受け持つ行の、畳み込みの系列の中の位置
+    // 読み込みで担当する行の、畳み込みの系列内の位置
     int convPos[LOADS * 4];
     [unroll] for (uint lr = 0; lr < LOADS * 4; lr++)
     {

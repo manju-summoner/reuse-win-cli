@@ -6,8 +6,8 @@ namespace ReuseWinCli
 {
     /// <summary>
     /// 標準入出力のハンドルを、そのまま FileStream で開く。
-    /// Console.OpenStandardOutput は、読み手が終わってパイプが閉じられたときの書き込みのエラーを黙って捨てるので、閉じられた後も最後まで推論を続けてしまう。
-    /// FileStream なら IOException になる。入力も同じ開き方に揃える（書き手が閉じたら、どちらも終わり（0 バイト）を返す）
+    /// Console.OpenStandardOutput は、読み取り側が終了してパイプが閉じられたときの書き込みエラーを無視するので、閉じられた後も最後まで推論を続けてしまう。
+    /// FileStream なら IOException がスローされる。入力も同じ方法で開く（書き込み側が閉じたら、どちらも終端（0 バイト）を返す）
     /// </summary>
     internal static partial class StandardStreams
     {

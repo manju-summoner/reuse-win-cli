@@ -13,8 +13,8 @@ namespace ReuseWinCli.Audio
     }
 
     /// <summary>
-    /// シークできないストリーム（標準入力のパイプ）から、チャンネル交互の PCM を float に変換しながら読む。
-    /// 長さは分からないので、ストリームの終わりまで読む
+    /// シークできないストリーム（標準入力のパイプ）から、インターリーブの PCM を float に変換しながら読み込む。
+    /// 長さは分からないので、ストリームの終端まで読み込む
     /// </summary>
     internal sealed class PcmStreamReader : IAudioReader
     {
@@ -30,7 +30,7 @@ namespace ReuseWinCli.Audio
         public int Channels { get; }
         public long? EstimatedFrames => null;
 
-        /// <param name="dataBytes">データの大きさ。分からなければ null（ストリームの終わりまで読む）</param>
+        /// <param name="dataBytes">データのサイズ。分からなければ null（ストリームの終端まで読み込む）</param>
         public PcmStreamReader(Stream stream, PcmSampleFormat format, int sampleRate, int channels, long? dataBytes = null)
         {
             if (sampleRate is < AudioLimits.MinSampleRate or > AudioLimits.MaxSampleRate)
@@ -58,7 +58,7 @@ namespace ReuseWinCli.Audio
             if (buffer.Length < wanted)
                 Array.Resize(ref buffer, wanted);
 
-            // 前回の読み込みで余ったサンプルの途中のバイトを先頭に残している
+            // 前回の読み込みで余った、サンプルの途中までのバイトを先頭に残している
             var filled = carried;
             while (filled < bytesPerSample)
             {
@@ -71,7 +71,7 @@ namespace ReuseWinCli.Audio
                 filled += read;
                 consumed += read;
             }
-            // 1 サンプル分そろったら、いま届いている分だけで返す（パイプの読み込みは届いた分しか返さないので、溜めずに渡す）
+            // 1 サンプル分そろったら、受信済みの分だけで返す（パイプの読み込みは受信済みの分しか返さないので、バッファリングせずに渡す）
             var samples = filled / bytesPerSample;
             Convert(buffer.AsSpan(0, samples * bytesPerSample), destination[..samples]);
             carried = filled - samples * bytesPerSample;
@@ -99,8 +99,8 @@ namespace ReuseWinCli.Audio
         }
 
         /// <summary>
-        /// WAV のヘッダーを読み、データの先頭から読む PcmStreamReader を返す。
-        /// パイプで流れてくる WAV は大きさの欄が「不明」（0xFFFFFFFF）や 0 のことがあるので、そのときはストリームの終わりまで読む
+        /// WAV のヘッダーを読み込み、データの先頭から読み込む PcmStreamReader を返す。
+        /// パイプから入力される WAV はサイズフィールドが「不明」（0xFFFFFFFF）や 0 のことがあるので、そのときはストリームの終端まで読み込む
         /// https://learn.microsoft.com/en-us/windows/win32/api/mmreg/ns-mmreg-waveformatextensible
         /// </summary>
         public static PcmStreamReader OpenWav(Stream stream)
@@ -137,7 +137,7 @@ namespace ReuseWinCli.Audio
                 }
                 else
                 {
-                    // LIST・fact などは読み飛ばす（チャンクは偶数バイトに揃えられている）
+                    // LIST・fact などはスキップする（チャンクは偶数バイトにアラインされている）
                     Skip(stream, size + size % 2);
                 }
             }
@@ -156,7 +156,7 @@ namespace ReuseWinCli.Audio
             {
                 if (fmt.Length < 40)
                     throw new InvalidDataException(Messages.NotWav);
-                // サブフォーマットの GUID の先頭 2 バイトが WAVE_FORMAT_PCM / WAVE_FORMAT_IEEE_FLOAT
+                // SubFormat の GUID の先頭 2 バイトが WAVE_FORMAT_PCM / WAVE_FORMAT_IEEE_FLOAT
                 tag = BinaryPrimitives.ReadUInt16LittleEndian(fmt[24..]);
             }
             PcmSampleFormat? format = (tag, bits) switch

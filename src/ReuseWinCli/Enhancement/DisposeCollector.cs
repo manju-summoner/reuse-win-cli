@@ -4,7 +4,7 @@ using System.Collections.Generic;
 namespace ReuseWinCli.Enhancement
 {
     /// <summary>
-    /// 作った順と逆の順に破棄する。D3D11 のビューを元のバッファより先に、デバイスを最後に手放すため
+    /// 作った順と逆の順に破棄する。D3D11 のビューを元のバッファより先に、デバイスを最後に解放するため
     /// </summary>
     internal sealed class DisposeCollector
     {

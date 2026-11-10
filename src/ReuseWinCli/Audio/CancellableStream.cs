@@ -7,10 +7,10 @@ using System.Threading.Tasks;
 namespace ReuseWinCli.Audio
 {
     /// <summary>
-    /// 標準入出力のパイプの読み書きを、中止されたら待たずに OperationCanceledException にする。
-    /// パイプの同期の読み書きは、相手がパイプを開いたまま送らない・読まないと返らない。取り消しの API（CancelIoEx）は、
-    /// 中止した時点で始まっていない読み書きには効かないので、読み書きは別のスレッドで行い、こちらは中止されたら待つのをやめる。
-    /// 待つのをやめた読み書きのスレッドは止まったまま残るが、中止の後はプロセスが終わる
+    /// 標準入出力のパイプの読み書きを、中止されたら完了を待たずに OperationCanceledException にする。
+    /// パイプの同期 I/O は、相手がパイプを開いたまま書き込まない・読み取らないと返らない。キャンセルの API（CancelIoEx）は、
+    /// 中止した時点で開始していない I/O には効かないので、読み書きは別のスレッドで行い、呼び出し元のスレッドは中止されたら待機をやめる。
+    /// 待機をやめた読み書きのスレッドはブロックしたまま残るが、中止の後はプロセスが終了する
     /// </summary>
     internal sealed class CancellableStream(Stream inner, CancellationToken token) : Stream
     {
@@ -27,13 +27,13 @@ namespace ReuseWinCli.Audio
             set => inner.Position = value;
         }
 
-        // 読み書きのスレッドには、このためだけに作った配列を渡す。待つのをやめた後もそのスレッドは配列を読み書きし続けるので、
-        // 呼び出し元の配列や、基底の Span 版が ArrayPool から借りて返す配列を渡すと、返した後の配列を書き換えてしまう
+        // 読み書きのスレッドには、このためだけに確保した配列を渡す。待機をやめた後もそのスレッドは配列を読み書きし続けるので、
+        // 呼び出し元の配列や、基底クラスの Span のオーバーロードが ArrayPool から Rent して Return する配列を渡すと、Return 後の配列を書き換えてしまう
         public override int Read(byte[] buffer, int offset, int count) => Read(buffer.AsSpan(offset, count));
 
         public override int Read(Span<byte> buffer)
         {
-            // Read は要求より少なく返してよい（呼び出し側は足りない分を読み直す）ので、呼ぶたびに作る配列を 64KB に抑える
+            // Read は要求より少なく返してよい（呼び出し側は不足分を再度読み込む）ので、呼ぶたびに確保する配列を 64KB までに制限する
             var own = new byte[Math.Min(buffer.Length, MaxReadBytes)];
             var read = Run(() => inner.Read(own, 0, own.Length));
             own.AsSpan(0, read).CopyTo(buffer);

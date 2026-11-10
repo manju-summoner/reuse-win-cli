@@ -44,8 +44,8 @@ namespace ReuseWinCli
         static int Main(string[] args)
         {
             Console.OutputEncoding = Encoding.UTF8;
-            // エクスプローラーからの起動（ドラッグ＆ドロップ・ダブルクリック）では、このプロセスのためにコンソールが作られ、終わると閉じてしまう。
-            // 結果を読めるよう、そのときだけ最後にキーを待つ
+            // エクスプローラーからの起動（ドラッグ＆ドロップ・ダブルクリック）では、このプロセスのためにコンソールが作られ、終了すると閉じてしまう。
+            // 結果を読めるよう、そのときだけ最後にキー入力を待つ
             var ownsConsole = OwnsConsole();
             try
             {
@@ -89,21 +89,21 @@ namespace ReuseWinCli
                 return ExitUsage;
             }
 
-            // 音声のバイナリを画面に出したり、キーボードからの入力を待ったりしないよう、標準入出力はリダイレクトされているときだけ使う
+            // 音声のバイナリをコンソールに出力したり、キーボードからの入力を待ったりしないよう、標準入出力はリダイレクトされているときだけ使う
             if (options.WritesStandardOutput && !Console.IsOutputRedirected || options.ReadsStandardInput && !Console.IsInputRedirected)
             {
                 Console.Error.WriteLine(options.WritesStandardOutput && !Console.IsOutputRedirected ? Messages.StdoutIsTerminal : Messages.StdinIsTerminal);
                 return ExitUsage;
             }
 
-            // 標準出力に音声を流すときは、画面への表示がデータに混ざらないよう、すべて標準エラーへ出す
+            // 標準出力に音声を書き出すときは、メッセージが音声データに混ざらないよう、すべて標準エラーに出力する
             if (options.WritesStandardOutput)
                 Console.SetOut(Console.Error);
             Console.WriteLine(Messages.Banner(version));
             using var cancellation = new CancellationTokenSource();
             void OnCancelKeyPress(object? sender, ConsoleCancelEventArgs e)
             {
-                // 1 回目は書きかけのファイルを片付けてから終わる。走っている推論は止められないので、待てないときのために 2 回目はそのまま終わらせる
+                // 1 回目は書き込み途中のファイルを削除してから終了する。実行中の推論は中断できないので、待てないときのために 2 回目はそのまま終了させる
                 if (cancellation.IsCancellationRequested)
                     return;
                 e.Cancel = true;
@@ -116,14 +116,14 @@ namespace ReuseWinCli
             }
             finally
             {
-                // 最後のキー待ちの間の Ctrl+C で、破棄した CancellationTokenSource に触らないようにする
+                // 最後のキー入力待ちの間に Ctrl+C が押されても、破棄済みの CancellationTokenSource にアクセスしないようにする
                 Console.CancelKeyPress -= OnCancelKeyPress;
             }
         }
 
         static int RunFiles(Options options, CancellationTokenSource cancellation)
         {
-            // 標準入力は自前で読むので、Media Foundation はファイルを読むときだけ使う
+            // 標準入力は自前で読み込むので、Media Foundation はファイルを読み込むときだけ使う
             var usesMediaFoundation = !options.ReadsStandardInput;
             if (usesMediaFoundation)
             {
@@ -133,7 +133,7 @@ namespace ReuseWinCli
                 }
                 catch (DllNotFoundException)
                 {
-                    // Windows の N エディションには Media Foundation が入っていない
+                    // Windows の N エディションには Media Foundation が含まれていない
                     Console.Error.WriteLine(Messages.MediaFoundationMissing);
                     return ExitFailed;
                 }
@@ -261,7 +261,7 @@ namespace ReuseWinCli
             if ((options.InFormat == "wav") != (options.Rate is null && options.Channels is null)
                 || (options.Rate is null) != (options.Channels is null))
                 throw new ArgumentException(Messages.RawNeedsRateAndChannels);
-            // 標準入力には名前が無いので、出力先を省いたら標準出力へ流す
+            // 標準入力にはファイル名が無いので、出力先を省略したら標準出力に書き出す
             if (options.ReadsStandardInput && options.Output is null)
                 options.Output = StandardStream;
             return options;
@@ -291,9 +291,9 @@ namespace ReuseWinCli
                 Console.Error.WriteLine(Messages.Failed(problem));
                 return false;
             }
-            // 途中で失敗・中止したときに、壊れた出力や前の出力を残さないよう、別の名前で書いてから置き換える。
-            // 同じ出力先へ同時に書くほかのプロセスのファイルを壊さないよう、名前は毎回変え、自分で作ったものだけを消す。
-            // 出力の名前に足すと、出力なら作れる長い名前でもファイル名の上限（255 文字）を超えるので、出力の名前とは関係なく決める
+            // 途中で失敗・中止したときに、不完全な出力や以前の出力を残さないよう、一時ファイルに書き込んでから置き換える。
+            // 同じ出力先に同時に書き込むほかのプロセスのファイルを破損させないよう、ファイル名は毎回変え、自分で作ったファイルだけを削除する。
+            // 出力のファイル名にサフィックスを追加すると、出力としては作れる長さのファイル名でも上限（255 文字）を超えるので、出力のファイル名とは無関係に決める
             var temporary = Path.Combine(Path.GetDirectoryName(Path.GetFullPath(output))!, $"reuse-win-cli.{Guid.NewGuid().ToString("N")[..8]}.partial");
             var created = false;
             var watch = Stopwatch.StartNew();
@@ -303,19 +303,19 @@ namespace ReuseWinCli
                 using (fileReader)
                 {
                     Console.WriteLine(Messages.Format(reader.SampleRate, reader.Channels, fileReader?.SourceSampleRate));
-                    // WAV の上限は書き込みで確かめる。長さの見込み（EstimatedFrames）は音声トラックではなくファイル全体の長さなので、先に判定すると収まる音声まで断ってしまう
+                    // WAV のサイズの上限は書き込み時に確認する。推定の長さ（EstimatedFrames）は音声トラックではなくファイル全体の長さなので、事前に判定すると上限に収まる音声までエラーにしてしまう
                     var file = new FileStream(temporary, FileMode.CreateNew, FileAccess.ReadWrite);
                     created = true;
                     using var writer = CreateWriter(options, file, reader.SampleRate, reader.Channels);
                     Enhance(engine, options, reader, writer, watch, token);
                 }
-                // 最後の推論の途中で中止されても、推論そのものは最後まで走って書き出される。中止したなら出力を確定させない
+                // 最後の推論の途中で中止されても、推論自体は最後まで実行されて書き出される。中止した場合は出力を確定しない
                 token.ThrowIfCancellationRequested();
                 File.Move(temporary, output, options.Overwrite);
                 Console.WriteLine(Messages.Done(output, watch.Elapsed.TotalSeconds));
                 return true;
             }
-            // 標準入力の読み込みを待っている間の中止も、CancellableStream が OperationCanceledException にするのでここに来る
+            // 標準入力の読み込みを待っている間の中止も、CancellableStream が OperationCanceledException をスローするのでここで捕捉する
             catch (OperationCanceledException) when (token.IsCancellationRequested)
             {
                 if (created)
@@ -335,8 +335,8 @@ namespace ReuseWinCli
         }
 
         /// <summary>
-        /// 標準出力へ書く場合。書いたものは取り消せないので、一時ファイルは使わない。
-        /// 出力先のプログラムが先に終わってパイプが閉じたら、失敗にせずに終える
+        /// 標準出力へ書き込む場合。書き込んだデータは取り消せないので、一時ファイルは使わない。
+        /// 出力先のプログラムが先に終了してパイプが閉じられたら、失敗として扱わずに終了する
         /// </summary>
         static bool ProcessToStandardOutput(ReUseEngine engine, Options options, string input, CancellationToken token)
         {
@@ -347,8 +347,8 @@ namespace ReuseWinCli
                 using (fileReader)
                 {
                     Console.WriteLine(Messages.Format(reader.SampleRate, reader.Channels, fileReader?.SourceSampleRate));
-                    // 読み手がパイプを開いたまま読まなくなっても、中止できるようにする。
-                    // ファイルへのリダイレクト（シークできる）は書き込みが止まったままにならないので包まない。包むと中止の後に WAV のヘッダーを書き戻せない
+                    // 読み取り側がパイプを開いたまま読み取らなくなっても、中止できるようにする。
+                    // ファイルへのリダイレクト（シークできる）は書き込みがブロックしたままにならないのでラップしない。ラップすると中止の後に WAV のヘッダーを書き戻せない
                     Stream stdout = StandardStreams.OpenOutput();
                     if (!stdout.CanSeek)
                         stdout = new CancellableStream(stdout, token);
@@ -359,7 +359,7 @@ namespace ReuseWinCli
                 Console.WriteLine(Messages.Done(Messages.StandardOutput, watch.Elapsed.TotalSeconds));
                 return true;
             }
-            // Ctrl+C はパイプの先のプログラムにも届くので、中止したときは先にパイプが閉じられることがある。そのときは中止として扱う
+            // Ctrl+C はパイプの後段のプログラムにも送られるので、中止したときは先にパイプが閉じられることがある。そのときは中止として扱う
             catch (IOException e) when (IsBrokenPipe(e) && !token.IsCancellationRequested)
             {
                 Console.WriteLine();
@@ -380,8 +380,8 @@ namespace ReuseWinCli
             }
         }
 
-        /// <summary>入力を開く。ファイルは Media Foundation で、標準入力は自前で読む（パイプからは読めない形式があるため）</summary>
-        /// <returns>FileReader は破棄が要る（標準入力のときは null）</returns>
+        /// <summary>入力を開く。ファイルは Media Foundation で、標準入力は自前で読み込む（パイプからは読み込めない形式があるため）</summary>
+        /// <returns>FileReader は破棄が必要（標準入力のときは null）</returns>
         static (IAudioReader Reader, MediaFoundationReader? FileReader) OpenReader(Options options, string input, CancellationToken token)
         {
             if (!options.ReadsStandardInput)
@@ -389,7 +389,7 @@ namespace ReuseWinCli
                 var fileReader = new MediaFoundationReader(Path.GetFullPath(input));
                 return (fileReader, fileReader);
             }
-            // 入力元がパイプを開いたまま何も送らなくなっても、中止できるようにする
+            // 書き込み側がパイプを開いたまま何も書き込まなくなっても、中止できるようにする
             var stdin = new CancellableStream(StandardStreams.OpenInput(), token);
             IAudioReader reader = options.InFormat switch
             {
@@ -400,7 +400,7 @@ namespace ReuseWinCli
             return (reader, null);
         }
 
-        /// <summary>パイプの読み手が終わった（ERROR_BROKEN_PIPE・ERROR_NO_DATA）</summary>
+        /// <summary>パイプの読み取り側が終了した（ERROR_BROKEN_PIPE・ERROR_NO_DATA）</summary>
         static bool IsBrokenPipe(IOException e) => (e.HResult & 0xFFFF) is 109 or 232;
 
         static IAudioOutput CreateWriter(Options options, Stream stream, int sampleRate, int channels)
@@ -424,7 +424,7 @@ namespace ReuseWinCli
             var lastReport = 0L;
             var lastFrames = 0L;
             var lastLine = "";
-            // 表示は、標準出力へ音声を流すときは標準エラーに出している
+            // 標準出力に音声を書き出すときは、メッセージを標準エラーに出力している
             var interactive = !(options.WritesStandardOutput ? Console.IsErrorRedirected : Console.IsOutputRedirected);
             new ChunkedEnhancer(engine).Process(reader, writer, options.Strength, frames =>
             {
@@ -443,7 +443,7 @@ namespace ReuseWinCli
                 Console.WriteLine('\r' + FormatProgress(lastFrames, reader, finished: true).PadRight(lastLine.Length));
         }
 
-        /// <param name="finished">書き終えたか。長さの見込みは実際の長さとずれることがあるので、終わったら実際の長さを全体とする</param>
+        /// <param name="finished">書き込みが完了したか。推定の長さは実際の長さとずれることがあるので、完了したら実際の長さを全体の長さとする</param>
         static string FormatProgress(long frames, IAudioReader reader, bool finished = false)
         {
             var done = (double)frames / reader.SampleRate;
@@ -455,8 +455,8 @@ namespace ReuseWinCli
             return Messages.Progress(Math.Min(100, 100.0 * frames / total), Math.Min(done, totalSeconds), totalSeconds);
         }
 
-        /// <summary>入力の隣の「<元の名前>_enhanced.wav」。上書きしないときは、空いている「_enhanced (n).wav」を探す</summary>
-        /// <param name="extension">出力の形式の拡張子（f32le なら .raw）</param>
+        /// <summary>入力と同じフォルダの「<元のファイル名>_enhanced.wav」。上書きしないときは、存在しない「_enhanced (n).wav」を探す</summary>
+        /// <param name="extension">出力形式の拡張子（f32le なら .raw）</param>
         internal static string GetDefaultOutputPath(string input, bool overwrite, string extension = ".wav")
         {
             var directory = Path.GetDirectoryName(Path.GetFullPath(input))!;
@@ -469,7 +469,7 @@ namespace ReuseWinCli
             return path;
         }
 
-        /// <summary>出力先に書けないときの理由。書けるなら null</summary>
+        /// <summary>出力先に書き込めないときの理由。書き込めるなら null</summary>
         internal static string? CheckOutputPath(string output, bool overwrite)
         {
             if (Directory.Exists(output) || output.EndsWith(Path.DirectorySeparatorChar) || output.EndsWith(Path.AltDirectorySeparatorChar))
@@ -493,7 +493,7 @@ namespace ReuseWinCli
             }
         }
 
-        /// <summary>このプロセスだけがコンソールにつながっているか（エクスプローラーから起動されたか）</summary>
+        /// <summary>このプロセスだけがコンソールにアタッチされているか（エクスプローラーから起動されたか）</summary>
         static bool OwnsConsole()
         {
             if (Console.IsInputRedirected || Console.IsOutputRedirected)

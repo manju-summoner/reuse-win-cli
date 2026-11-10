@@ -6,14 +6,14 @@ using Vortice.MediaFoundation;
 namespace ReuseWinCli.Audio
 {
     /// <summary>
-    /// Windows の Media Foundation で、音声ファイルや動画ファイルの最初の音声トラックを 32bit float に変換しながら読む。
-    /// 読める形式は Windows に入っているデコーダーで決まる（wav・mp3・m4a/aac・mp4/mov の音声・wma・flac など）。
+    /// Windows の Media Foundation で、音声ファイルや動画ファイルの最初の音声トラックを 32bit float に変換しながら読み込む。
+    /// 読み込める形式は Windows にインストールされているデコーダーで決まる（wav・mp3・m4a/aac・mp4/mov の音声・wma・flac など）。
     /// 呼ぶ前に <see cref="MediaFactory.MFStartup"/> を済ませておく。
     /// https://learn.microsoft.com/en-us/windows/win32/medfound/source-reader
     /// </summary>
     internal sealed class MediaFoundationReader : IAudioReader, IDisposable
     {
-        // RE-USE の公式が受け付けるサンプリングレートの範囲。外れるものは Media Foundation に変換させる
+        // RE-USE の公式実装が対応するサンプリングレートの範囲。範囲外のものは Media Foundation でリサンプリングする
         const int MinSampleRate = AudioLimits.MinSampleRate;
         const int MaxSampleRate = AudioLimits.MaxSampleRate;
 
@@ -26,7 +26,7 @@ namespace ReuseWinCli.Audio
         public int Channels { get; private set; }
         public long? EstimatedFrames { get; }
 
-        /// <summary>入力のサンプリングレート。範囲外で変換したときだけ <see cref="SampleRate"/> と違う</summary>
+        /// <summary>入力のサンプリングレート。範囲外でリサンプリングしたときだけ <see cref="SampleRate"/> と違う</summary>
         public int SourceSampleRate { get; }
 
         public MediaFoundationReader(string path)
@@ -51,7 +51,7 @@ namespace ReuseWinCli.Audio
                 }
                 catch (SharpGen.Runtime.SharpGenException e)
                 {
-                    // 音声のストリームが無いと MF_E_INVALIDSTREAMNUMBER になる
+                    // 音声ストリームが無いと MF_E_INVALIDSTREAMNUMBER になる
                     throw new InvalidDataException(Messages.NoAudioTrack, e);
                 }
                 var convert = nativeRate is < MinSampleRate or > MaxSampleRate;
@@ -68,7 +68,7 @@ namespace ReuseWinCli.Audio
                 ReadCurrentFormat();
 
                 // HE-AAC などは、コンテナーに書かれた形式（コア部分のサンプリングレート・チャンネル数）と、デコードした結果の形式が違い、
-                // 最初のサンプルを読んだところで形式が変わったと知らされる。形式を確定させるため、最初のサンプルをここで読んでおく
+                // 最初のサンプルを読み込んだ時点で形式の変更が通知される。形式を確定させるため、最初のサンプルをここで読み込んでおく
                 if (!Fill(allowFormatChange: true))
                     ended = true;
                 SourceSampleRate = convert ? nativeRate : SampleRate;
@@ -77,7 +77,7 @@ namespace ReuseWinCli.Audio
                 if (Channels <= 0)
                     throw new NotSupportedException(Messages.UnknownChannels);
 
-                // 長さ（100ns 単位）。分からない形式では取れないので、進捗の表示をあきらめる
+                // 長さ（100ns 単位）。形式によっては取得できないので、そのときは進捗の割合を表示しない
                 try
                 {
                     var duration = reader.GetPresentationAttribute(SourceReaderIndex.MediaSource, PresentationDescriptionAttributeKeys.Duration);
@@ -123,8 +123,8 @@ namespace ReuseWinCli.Audio
             Channels = (int)actual.GetUInt32(MediaTypeAttributeKeys.AudioNumChannels);
         }
 
-        /// <summary>次のサンプルを読んで pending に入れる。終わりなら false</summary>
-        /// <param name="allowFormatChange">形式が変わったら読み直す（最初のサンプルを読むまで）。false なら例外にする</param>
+        /// <summary>次のサンプルを読み込んで pending に格納する。ストリームの終端なら false</summary>
+        /// <param name="allowFormatChange">形式が変わったら形式を取得し直す（最初のサンプルを読み込むまで）。false なら例外をスローする</param>
         bool Fill(bool allowFormatChange = false)
         {
             while (true)

@@ -5,7 +5,7 @@ using System.Reflection;
 namespace ReuseWinCli
 {
     /// <summary>
-    /// exe に埋め込んだリソース（シェーダー・重み・ライセンス）を読む。名前は csproj と *.targets の LogicalName
+    /// exe に埋め込んだリソース（シェーダー・重み・ライセンス）を読み込む。名前は csproj と *.targets の LogicalName
     /// </summary>
     internal static class EmbeddedResources
     {
@@ -22,7 +22,7 @@ namespace ReuseWinCli
         }
 
         /// <summary>
-        /// リソースの中身をコピーせずに読む。埋め込みリソースは exe のイメージにそのまま載っているので、ポインターで触れる
+        /// リソースの内容をコピーせずに読み込む。埋め込みリソースは exe のイメージにそのままマップされているので、ポインターでアクセスできる
         /// </summary>
         public static unsafe T Read<T>(string name, ReadOnlySpanFunc<T> reader)
         {

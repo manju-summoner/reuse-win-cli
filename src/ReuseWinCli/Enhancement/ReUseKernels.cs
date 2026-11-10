@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace ReuseWinCli.Enhancement
 {
     /// <summary>
-    /// RE-USE のエンコーダー・デコーダーと iSTFT で使うカーネルの呼び出し。活性は [高さ（時間）][幅（周波数）][チャンネル] の並び
+    /// RE-USE のエンコーダー・デコーダーと iSTFT で使うカーネルの呼び出し。アクティベーションは [高さ（時間）][幅（周波数）][チャンネル] のレイアウト
     /// </summary>
     internal static class ReUseKernels
     {
@@ -20,7 +20,7 @@ namespace ReuseWinCli.Enhancement
 
         /// <summary>
         /// PyTorch の Conv2d の重み [出力][入力][行][列] から、入力チャンネル [sliceStart, sliceStart+sliceChannels) の分を取り出し、
-        /// カーネルの並び [出力][行][列][入力] に並べ替える。swapKernel なら行と列を入れ替える
+        /// カーネルのレイアウト [出力][行][列][入力] に並べ替える。swapKernel なら行と列を入れ替える
         /// </summary>
         public static float[] ReorderConvWeight(float[] weight, int cout, int cinTotal, int kernelH, int kernelW, int sliceStart, int sliceChannels, bool swapKernel)
         {
@@ -41,8 +41,8 @@ namespace ReuseWinCli.Enhancement
 
         /// <param name="weight"><see cref="ReorderConvWeight"/> で並べ替えた重み</param>
         /// <param name="outHeight">畳み込みの出力の高さ（Shuffle の前）</param>
-        /// <param name="storeWidth">出力のバッファの幅（Shuffle が Width なら outWidth × factor）</param>
-        /// <param name="accumulate">出力に足し込む（DenseBlock の連結した入力を、64 チャンネルずつ別のバッファから足し込むとき）</param>
+        /// <param name="storeWidth">出力バッファの幅（Shuffle が Width なら outWidth × factor）</param>
+        /// <param name="accumulate">出力に累積加算する（DenseBlock の連結した入力を、64 チャンネルずつ別のバッファから累積加算するとき）</param>
         public static void Conv2d(
             ReUseComputeDevice device,
             ReUseBuffer input, int inHeight, int inWidth, int inStride, int cin,
@@ -65,7 +65,7 @@ namespace ReuseWinCli.Enhancement
         public static int NormPartialLength(int count) => Groups(count, NormPositionsPerBlock) * NormChannels * 3;
 
         /// <summary>
-        /// InstanceNorm2d（affine）と PReLU をその場で行う。data は [count][64]
+        /// InstanceNorm2d（affine）と PReLU をインプレースで行う。data は [count][64]
         /// </summary>
         public static void InstanceNormPRelu(
             ReUseComputeDevice device, ReUseBuffer data, int count, ReUseBuffer partial,

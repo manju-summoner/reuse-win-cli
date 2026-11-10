@@ -12,7 +12,7 @@ using MapFlags = Vortice.Direct3D11.MapFlags;
 namespace ReuseWinCli.Enhancement
 {
     /// <summary>
-    /// RE-USE の推論に使う D3D11 デバイス。GPU で作れなければ WARP（ソフトウェアの D3D11）で作る。
+    /// RE-USE の推論に使う D3D11 デバイス。GPU で作成できなければ WARP（ソフトウェア実装の D3D11）で作成する。
     /// </summary>
     internal sealed class ReUseComputeDevice : IDisposable
     {
@@ -32,7 +32,7 @@ namespace ReuseWinCli.Enhancement
         public bool IsWarp { get; }
 
         /// <summary>
-        /// Dispatch の直後に、デバイスのロックの中でシェーダーの名前とともに呼ぶ。カーネルごとの GPU の時間をタイムスタンプのクエリで測るテストが使う
+        /// Dispatch の直後に、デバイスのロックの中でシェーダー名を渡して呼ぶ。カーネルごとの GPU 時間をタイムスタンプクエリで計測するテストが使う
         /// </summary>
         internal Action<ID3D11DeviceContext, string>? DispatchObserver { get; set; }
 
@@ -60,7 +60,7 @@ namespace ReuseWinCli.Enhancement
                 var adapters = GetHardwareAdaptersByPerformance();
                 try
                 {
-                    // 性能の高い順に、デバイスを作れる GPU を探す（機能レベル 11_0 に届かない GPU は飛ばす）
+                    // 性能の高い順に、デバイスを作成できる GPU を探す（機能レベル 11_0 に対応していない GPU はスキップする）
                     IEnumerable<IDXGIAdapter1?> candidates = adapters is null ? new IDXGIAdapter1?[] { null } : adapters;
                     foreach (var adapter in candidates)
                     {
@@ -79,7 +79,7 @@ namespace ReuseWinCli.Enhancement
             return new ReUseComputeDevice(warpDevice, warpContext, true);
         }
 
-        // cs_5_0 と構造化バッファは機能レベル 11_0 から。
+        // cs_5_0 と構造化バッファは機能レベル 11_0 以上で使える。
         // https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-devices-downlevel-intro
         static readonly FeatureLevel[] FeatureLevels = [FeatureLevel.Level_11_1, FeatureLevel.Level_11_0];
 
@@ -92,9 +92,9 @@ namespace ReuseWinCli.Enhancement
         }
 
         /// <summary>
-        /// ハードウェアの GPU を性能の高い順に。ハイブリッド GPU のノート PC では、既定のアダプター（D3D11CreateDevice に null を渡したとき）が省電力の内蔵 GPU になるため。
-        /// ソフトウェアのアダプター（Microsoft Basic Render Driver）は入れない（GPU でデバイスを作れなければ呼び出し側が WARP で作る）。
-        /// IDXGIFactory6 は Windows 10 1803 から。無い環境では null（既定のアダプターを使う）を返す。返したアダプターは呼び出し側が破棄する
+        /// ハードウェアの GPU を性能の高い順に返す。ハイブリッド GPU のノート PC では、既定のアダプター（D3D11CreateDevice に null を渡したとき）が省電力の内蔵 GPU になるため。
+        /// ソフトウェアアダプター（Microsoft Basic Render Driver）は含めない（GPU でデバイスを作成できなければ呼び出し側が WARP で作成する）。
+        /// IDXGIFactory6 は Windows 10 1803 以降。無い環境では null（既定のアダプターを使う）を返す。返したアダプターは呼び出し側が破棄する
         /// https://learn.microsoft.com/en-us/windows/win32/api/dxgi1_6/nf-dxgi1_6-idxgifactory6-enumadapterbygpupreference
         /// </summary>
         internal static List<IDXGIAdapter1>? GetHardwareAdaptersByPerformance()
@@ -164,7 +164,7 @@ namespace ReuseWinCli.Enhancement
                 Context.Dispatch((uint)groupsX, (uint)groupsY, 1);
                 DispatchObserver?.Invoke(Context, shaderName);
 
-                // 次の Dispatch で出力を入力に回すので、束縛を外しておく（同じバッファを入力と出力に同時に束縛すると入力が外される）
+                // 次の Dispatch で出力を入力に使うので、バインドを解除しておく（同じバッファを入力と出力に同時にバインドすると入力のバインドが解除される）
                 Array.Clear(resourceSlots);
                 Array.Clear(targetSlots);
                 Context.CSSetShaderResources(0, (uint)resources.Length, resourceSlots!);
@@ -213,7 +213,7 @@ namespace ReuseWinCli.Enhancement
     }
 
     /// <summary>
-    /// float の構造化バッファ。D3D11 のリソースの大きさの上限（GPU によっては 128MB）を超えないよう、呼び出し側で長さを抑える。
+    /// float の構造化バッファ。D3D11 のリソースサイズの上限（GPU によっては 128MB）を超えないよう、呼び出し側で長さを制限する。
     /// https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-resources-limits
     /// </summary>
     internal sealed class ReUseBuffer : IDisposable

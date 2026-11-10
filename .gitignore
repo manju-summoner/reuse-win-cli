@@ -2,7 +2,7 @@ bin/
 obj/
 .vs/
 *.user
-# ビルド時に Hugging Face から取ってくる RE-USE の重み
+# ビルド時に Hugging Face からダウンロードする RE-USE の重み
 .cache/
 # README の手順・GitHub Actions で作る発行物
 publish/

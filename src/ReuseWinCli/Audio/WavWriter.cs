@@ -6,14 +6,14 @@ using System.Runtime.InteropServices;
 namespace ReuseWinCli.Audio
 {
     /// <summary>
-    /// 32bit float の WAV を書く。モデルの出力は 1 を超えることがあるので、整数に丸めて音を割らないよう float のまま残す。
-    /// 3 チャンネル以上は WAVE_FORMAT_EXTENSIBLE で書く（WAVE_FORMAT_IEEE_FLOAT は 2 チャンネルまでしか想定されていない）。
-    /// シークできないストリーム（標準出力のパイプ）には、大きさの欄を「不明」にして書く
+    /// 32bit float の WAV を書き込む。モデルの出力は 1 を超えることがあるので、整数に丸めてクリッピングさせないよう float のまま残す。
+    /// 3 チャンネル以上は WAVE_FORMAT_EXTENSIBLE で書き込む（WAVE_FORMAT_IEEE_FLOAT は 2 チャンネルまでしか想定されていない）。
+    /// シークできないストリーム（標準出力のパイプ）には、サイズフィールドを「不明」にして書き込む
     /// https://learn.microsoft.com/en-us/windows/win32/api/mmreg/ns-mmreg-waveformatextensible
     /// </summary>
     internal sealed class WavWriter : IAudioOutput
     {
-        /// <summary>音声データの大きさの上限。RIFF の大きさの欄は 32bit なので、ヘッダーの分を残す</summary>
+        /// <summary>音声データのサイズの上限。RIFF のサイズフィールドは 32bit なので、ヘッダーの分を残す</summary>
         public const long MaxDataBytes = uint.MaxValue - 128;
 
         const ushort WaveFormatIeeeFloat = 3;
@@ -21,7 +21,7 @@ namespace ReuseWinCli.Audio
         // KSDATAFORMAT_SUBTYPE_IEEE_FLOAT
         static readonly Guid SubtypeIeeeFloat = new("00000003-0000-0010-8000-00aa00389b71");
 
-        /// <summary>パイプで長さが分からないときの大きさの欄（ffmpeg などと同じ）</summary>
+        /// <summary>パイプで長さが分からないときのサイズフィールドの値（ffmpeg などと同じ）</summary>
         const uint UnknownSize = uint.MaxValue;
 
         readonly Stream stream;
@@ -49,7 +49,7 @@ namespace ReuseWinCli.Audio
             if (extensible)
             {
                 BinaryPrimitives.WriteUInt16LittleEndian(header[18..], 32);
-                // チャンネルの配置は入力から引き継がないので、スピーカーの割り当てを決めない
+                // チャンネルの配置は入力から引き継がないので、スピーカーの割り当ては指定しない
                 BinaryPrimitives.WriteUInt32LittleEndian(header[20..], 0);
                 SubtypeIeeeFloat.TryWriteBytes(header[24..]);
             }
@@ -64,7 +64,7 @@ namespace ReuseWinCli.Audio
                 WriteAscii("fmt ");
                 WriteUInt32((uint)header.Length);
                 stream.Write(header);
-                // PCM 以外の形式には fact チャンク（フレーム数）を付ける。パイプでは長さを書き戻せないので付けない（誤った長さを書かない）
+                // PCM 以外の形式には fact チャンク（フレーム数）を追加する。パイプでは長さを書き戻せないので追加しない（誤った長さを書き込まない）
                 if (!streaming)
                 {
                     WriteAscii("fact");
@@ -80,7 +80,7 @@ namespace ReuseWinCli.Audio
             }
             catch
             {
-                // 呼び出し元が書きかけのファイルを消せるよう、閉じてから伝える
+                // 呼び出し元が書き込み途中のファイルを削除できるよう、閉じてから例外を再スローする
                 stream.Dispose();
                 throw;
             }
@@ -89,12 +89,12 @@ namespace ReuseWinCli.Audio
         public void Write(ReadOnlySpan<float> samples)
         {
             var bytes = MemoryMarshal.AsBytes(samples);
-            // パイプでは大きさの欄が「不明」なので、上限は無い
+            // パイプではサイズフィールドが「不明」なので、上限は無い
             if (!streaming && dataBytes + bytes.Length > MaxDataBytes)
                 throw new IOException(Messages.WavTooLarge);
             stream.Write(bytes);
             dataBytes += bytes.Length;
-            // パイプの先へ、チャンクを書くたびに届ける
+            // パイプの後段にすぐ渡るよう、チャンクを書き込むたびにフラッシュする
             if (streaming)
                 stream.Flush();
         }
@@ -122,7 +122,7 @@ namespace ReuseWinCli.Audio
             }
             finally
             {
-                // ヘッダーの書き戻しに失敗しても閉じる。呼び出し元が書きかけのファイルを消せるようにする
+                // ヘッダーの書き戻しに失敗しても閉じる。呼び出し元が書き込み途中のファイルを削除できるようにする
                 stream.Dispose();
             }
         }

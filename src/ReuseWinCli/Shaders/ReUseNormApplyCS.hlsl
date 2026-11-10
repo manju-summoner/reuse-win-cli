@@ -1,5 +1,5 @@
-// RE-USE の InstanceNorm（affine）と PReLU。ReUseNormStatsCS の部分和からチャンネルごとの平均と分散を求め、その場で書き換える。
-// 部分和の数（Blocks）は数百程度なので、各スレッドが自分のチャンネルの部分和を足し直す。
+// RE-USE の InstanceNorm（affine）と PReLU。ReUseNormStatsCS の部分和からチャンネルごとの平均と分散を求め、インプレースで書き換える。
+// 部分和の数（Blocks）は数百程度なので、各スレッドが担当するチャンネルの部分和を集計し直す。
 
 cbuffer Constants : register(b0)
 {

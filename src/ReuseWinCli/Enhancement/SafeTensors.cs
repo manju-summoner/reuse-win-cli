@@ -10,7 +10,7 @@ namespace ReuseWinCli.Enhancement
     internal sealed record SafeTensor(int[] Shape, float[] Data);
 
     /// <summary>
-    /// safetensors 形式（先頭 8 バイトがヘッダーの長さ、続いて JSON のヘッダー、その後ろにテンソルの生データ）を読む。F32 のテンソルだけを扱う。
+    /// safetensors 形式（先頭 8 バイトがヘッダーの長さ、続いて JSON のヘッダー、その後ろにテンソルの生データ）を読み込む。F32 のテンソルだけに対応する。
     /// https://github.com/huggingface/safetensors#format
     /// </summary>
     internal static class SafeTensors

@@ -1,9 +1,9 @@
-// RE-USE のエンコーダー・デコーダーの 2 次元畳み込み。im2col を作らずに、行列積のタイルへ読み込むときに入力の位置を求める（implicit GEMM）。
-// 活性は [高さ（時間）][幅（周波数）][チャンネル] の並び。重みは [出力][カーネルの行][カーネルの列][入力] に並べ替えて渡す
+// RE-USE のエンコーダー・デコーダーの 2 次元畳み込み。im2col を作らずに、行列積のタイルに読み込むときに入力の位置を求める（implicit GEMM）。
+// アクティベーションは [高さ（時間）][幅（周波数）][チャンネル] のレイアウト。重みは [出力][カーネルの行][カーネルの列][入力] に並べ替えて渡す
 // （入力チャンネルが最も内側なので、連続した k が連続したアドレスになる）。
-// Shuffle は SPConvTranspose2d（出力チャンネルを R 個に分けて、幅か高さを R 倍に並べ直す）を出力の書き込みで行う。
+// Shuffle は SPConvTranspose2d（出力チャンネルを R 個に分割して、幅か高さを R 倍に並べ直す）を出力の書き込み時に行う。
 // 畳み込みは入力チャンネルについて線形なので、DenseBlock の連結した入力は、64 チャンネルずつ別々のバッファのまま
-// FLAG_ACCUMULATE で足し込んで求める（連結したバッファは D3D11 のリソースの大きさの上限を超えうるため）。
+// FLAG_ACCUMULATE で累積加算して求める（連結したバッファは D3D11 のリソースサイズの上限を超えうるため）。
 
 cbuffer Constants : register(b0)
 {
@@ -48,11 +48,11 @@ RWStructuredBuffer<float> Y : register(u0);
 #define TILE 64
 #define TILE_K 32
 #define TILE4 (TILE / 4)
-// 1 スレッドが 1 回に置く float4 の数
+// 1 スレッドが 1 回に共有メモリーに格納する float4 の数
 #define LOADS (TILE_K * TILE4 / 256)
 
-// スレッドは 4 行 × 4 列を受け持ち、共有メモリーから float4 で読む（ReUseLinearCS と同じ形）。
-// 行の長さを float4 1 つ分余らせて、書き込むときのバンクの衝突を避ける
+// スレッドは 4 行 × 4 列を担当し、共有メモリーから float4 で読み込む（ReUseLinearCS と同じタイル構成）。
+// 行を float4 1 つ分パディングして、書き込み時のバンクコンフリクトを避ける
 groupshared float4 tileX[TILE_K][TILE4 + 1];
 groupshared float4 tileW[TILE_K][TILE4 + 1];
 
@@ -61,15 +61,15 @@ void main(uint3 group : SV_GroupID, uint3 thread : SV_GroupThreadID)
 {
     uint M = OutH * OutW;
     uint K = KH * KW * Cin;
-    // 同じ位置の出力チャンネルのタイルを続けて走らせ、入力を L2 に残ったまま読む
+    // 同じ位置の出力チャンネルのタイルを連続して実行し、L2 キャッシュに残っている入力を読み込む
     uint rowBase = group.y * TILE;
     uint colBase = group.x * TILE;
     uint local = thread.y * 16 + thread.x;
-    // 隣り合うスレッドが隣り合う k を読み（グローバルメモリーの読み込みをまとめるため）、4 行（4 列）分を float4 にして置く
+    // 隣接するスレッドが隣接する k を読み込み（グローバルメモリーへのアクセスをコアレッシングするため）、4 行（4 列）分を float4 にまとめて格納する
     uint loadK = local % TILE_K;
     uint loadQ = local / TILE_K;
 
-    // 読み込みで受け持つ行の、カーネルの左上に当たる入力の位置。範囲外の行は高さを大きな負にして読まない
+    // 読み込みで担当する行の、カーネルの左上に対応する入力の位置。範囲外の行は高さを大きな負の値にして読み込まない
     int baseH[LOADS * 4];
     int baseW[LOADS * 4];
     [unroll] for (uint lr = 0; lr < LOADS * 4; lr++)

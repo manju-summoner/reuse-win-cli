@@ -6,12 +6,12 @@ using Vortice.DXGI;
 namespace ReuseWinCli.Enhancement
 {
     /// <summary>
-    /// RE-USE の推論器。GPU の作業用バッファは推論ごとに使い回すので、GPU の処理は 1 つずつ行う。
-    /// CPU の前処理と後処理はロックの外で行い、別のスレッドからの推論の GPU の処理と重ねられるようにする
+    /// RE-USE の推論器。GPU の作業用バッファは推論ごとに再利用するので、GPU 処理は 1 つずつ行う。
+    /// CPU の前処理と後処理はロックの外で行い、別のスレッドからの推論の GPU 処理と並行して実行できるようにする
     /// </summary>
     internal sealed class ReUseEngine : ISpeechEnhancer, IDisposable
     {
-        /// <summary>公式の分割推論（inference_chunk.py）の長さ。GPU のメモリーが足りなければ短くする</summary>
+        /// <summary>公式の分割推論（inference_chunk.py）のチャンクの長さ。GPU メモリーが足りなければ短くする</summary>
         const double MaxChunkSeconds = 5;
 
         readonly Lock gate = new();
@@ -48,7 +48,7 @@ namespace ReuseWinCli.Enhancement
         }
 
         /// <summary>
-        /// 1 回で処理するサンプル数（偶数）。いちばん大きい作業用バッファが D3D11 のリソースの上限と GPU のメモリーの予算に収まる長さにする
+        /// 1 回で処理するサンプル数（偶数）。最大の作業用バッファが D3D11 のリソースサイズの上限と GPU メモリーの予算に収まる長さにする
         /// </summary>
         public int GetChunkSamples(int sampleRate)
         {
@@ -60,7 +60,7 @@ namespace ReuseWinCli.Enhancement
         }
 
         /// <summary>モノラルの音声を補正して、同じ長さで返す。別々のスレッドから同時に呼んでよい</summary>
-        /// <param name="token">GPU の順番を待った後にも確かめる。WARP では 1 回の推論に数分かかるので、中止された後の推論を始めない</param>
+        /// <param name="token">GPU のロックを取得した後にも確認する。WARP では 1 回の推論に数分かかるので、中止された後の推論を開始しない</param>
         public float[] Enhance(ReadOnlySpan<float> samples, int sampleRate, CancellationToken token = default)
         {
             var prepared = ReUseModel.Prepare(samples, sampleRate);
@@ -76,8 +76,8 @@ namespace ReuseWinCli.Enhancement
         }
 
         /// <summary>
-        /// 作業用バッファ 1 つあたりの上限。D3D11 のリソースの大きさの上限（max(128MB, VRAM の 1/4) と 2GB の小さい方）と、
-        /// 構造化バッファのビューの要素数の上限（2^27）に収め、作業用バッファ全体（いちばん大きいものの 10 本分程度）が VRAM の 8 割を超えないようにする。
+        /// 作業用バッファ 1 つあたりの上限。D3D11 のリソースサイズの上限（max(128MB, VRAM の 1/4) と 2GB の小さい方）と、
+        /// 構造化バッファのビューの要素数の上限（2^27）に収め、作業用バッファ全体（最大のものの 10 個分程度）が VRAM の 8 割を超えないようにする。
         /// https://learn.microsoft.com/en-us/windows/win32/direct3d11/overviews-direct3d-11-resources-limits
         /// </summary>
         static (long Budget, string AdapterName) GetBufferBudget(ReUseComputeDevice device)
@@ -91,7 +91,7 @@ namespace ReuseWinCli.Enhancement
                 {
                     using var adapter = dxgiDevice.GetAdapter();
                     var description = adapter.Description;
-                    // PointerUSize を long に直接変換すると uint を経由し、4GB 以上の VRAM で桁あふれする
+                    // PointerUSize を long に直接変換すると uint を経由し、4GB 以上の VRAM でオーバーフローする
                     dedicated = (long)(nuint)description.DedicatedVideoMemory;
                     name = description.Description;
                 }

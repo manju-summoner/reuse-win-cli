@@ -7,7 +7,7 @@ using ReuseWinCli.Audio;
 namespace ReuseWinCli.Enhancement
 {
     /// <summary>
-    /// 推論の差し替え口。本番は <see cref="ReUseEngine"/>、テストは GPU を使わない偽の推論を渡す
+    /// 推論を差し替えるためのインターフェイス。本番は <see cref="ReUseEngine"/>、テストは GPU を使わないフェイクの推論を渡す
     /// </summary>
     internal interface ISpeechEnhancer
     {
@@ -21,9 +21,9 @@ namespace ReuseWinCli.Enhancement
     /// <summary>
     /// 音声全体を RE-USE で補正する。
     /// RE-USE は前後の文脈を使う（双方向）モデルなので、公式の inference_chunk.py と同じく、一定の長さの区間（チャンク）に分けて処理し、
-    /// 半分ずつ重ねて Hann 窓で混ぜる。チャンクの区切り方と混ぜ方は YMM4 の音声エフェクト「AIノイズ除去（RE-USE）」と同じにして、同じ入力から同じ出力を得る。
+    /// 半分ずつ重ねて Hann 窓で合成する。チャンクの分割と合成は YMM4 の音声エフェクト「AIノイズ除去（RE-USE）」と同じにして、同じ入力から同じ出力を得る。
     /// 公式は最後のチャンクを末尾に揃えるが、ここでは最後のチャンクは入力がある分だけを処理する（YMM4 と同じ）。
-    /// 入力を前から読みながら出力を書くので、長い音声でもメモリーに全部を載せない。
+    /// 入力を先頭から読み込みながら出力を書き込むので、長い音声でも全体をメモリーに載せない。
     /// </summary>
     internal sealed class ChunkedEnhancer(ISpeechEnhancer enhancer)
     {
@@ -32,7 +32,7 @@ namespace ReuseWinCli.Enhancement
             public int Length => Dry[0].Length;
         }
 
-        /// <param name="strength">補正の強さ（0〜1）。元の音と補正した音を混ぜる割合</param>
+        /// <param name="strength">補正の強さ（0〜1）。元の音声と補正した音声を混合する割合</param>
         /// <param name="progress">書き出したフレーム数を受け取る</param>
         public void Process(IAudioReader input, IAudioWriter output, float strength, Action<long>? progress, CancellationToken token)
         {
@@ -40,7 +40,7 @@ namespace ReuseWinCli.Enhancement
             var sampleRate = input.SampleRate;
             var chunkLength = enhancer.GetChunkSamples(sampleRate);
             var hop = chunkLength / 2;
-            // torch.hann_window（periodic）を 1e-7 で下から抑えたもの（公式と同じ）。端でも割り算が 0 にならない
+            // torch.hann_window（periodic）の下限を 1e-7 にクランプしたもの（公式と同じ）。端でも除算の分母が 0 にならない
             var window = new float[chunkLength];
             for (var i = 0; i < chunkLength; i++)
                 window[i] = (float)Math.Max(0.5 - 0.5 * Math.Cos(2 * Math.PI * i / chunkLength), 1e-7);
@@ -56,7 +56,7 @@ namespace ReuseWinCli.Enhancement
             {
                 while (current is not null)
                 {
-                    // チャンク k を待つ間に、チャンク k+1 の推論を始めておく（CPU の前処理・後処理を、もう片方の GPU の処理と重ねる）
+                    // チャンク k を待つ間に、チャンク k+1 の推論を開始しておく（CPU の前処理・後処理を、もう一方の GPU 処理と並行して実行する）
                     block = nextBlock;
                     nextBlock = ReadBlock(input, hop, channels);
                     next = Start(block, nextBlock, channels, sampleRate, token);
@@ -73,7 +73,7 @@ namespace ReuseWinCli.Enhancement
             }
             catch
             {
-                // 走っている推論が終わるのを待ってから伝える。呼び出し元が推論器を破棄した後で GPU を使わないようにする
+                // 実行中の推論が終わるのを待ってから例外を再スローする。呼び出し元が推論器を破棄した後で GPU を使わないようにする
                 WaitQuietly(current);
                 WaitQuietly(next);
                 throw;
@@ -88,11 +88,11 @@ namespace ReuseWinCli.Enhancement
             }
             catch (AggregateException)
             {
-                // 先に起きた例外を伝える
+                // 先に発生した例外を呼び出し元で再スローするので、ここでは無視する
             }
         }
 
-        /// <summary>チャンクの最初の hop フレームのうち入力がある分を、前のチャンクの後半と混ぜて書く</summary>
+        /// <summary>チャンクの最初の hop フレームのうち入力がある分を、前のチャンクの後半と合成して書き込む</summary>
         static void Mix(Chunk chunk, Chunk? previous, int hop, int channels, float[] window, float strength, float[] frame, IAudioWriter output)
         {
             var run = Math.Min(hop, chunk.Length);
@@ -119,7 +119,7 @@ namespace ReuseWinCli.Enhancement
         }
 
         /// <summary>
-        /// hop フレーム分の入力（チャンネル交互）。入力が尽きた後は空、尽きる途中なら短くなる
+        /// hop フレーム分の入力（インターリーブ）。入力の終端に達した後は空、途中で終端に達したら短くなる
         /// </summary>
         static float[] ReadBlock(IAudioReader input, int hop, int channels)
         {
@@ -136,7 +136,7 @@ namespace ReuseWinCli.Enhancement
         }
 
         /// <summary>
-        /// 連続する 2 つのブロックをつないだチャンクの推論を始める。入力が尽きた後のチャンクなら null
+        /// 連続する 2 つのブロックを連結したチャンクの推論を開始する。入力の終端に達した後のチャンクなら null
         /// </summary>
         Task<Chunk>? Start(float[] first, float[] second, int channels, int sampleRate, CancellationToken token)
         {
@@ -159,7 +159,7 @@ namespace ReuseWinCli.Enhancement
             return Task.Run(() =>
             {
                 token.ThrowIfCancellationRequested();
-                // 中身が同じチャンネル（モノラルをステレオにした素材など）は 1 回だけ処理する。違うものは並べて走らせる
+                // 内容が同じチャンネル（モノラルをステレオにした素材など）は 1 回だけ処理する。違うものは並列に実行する
                 var tasks = new Task<float[]>[channels];
                 for (var c = 0; c < channels; c++)
                 {
@@ -178,7 +178,7 @@ namespace ReuseWinCli.Enhancement
                 }
                 catch (AggregateException e)
                 {
-                    // 複数のチャンネルが同時に失敗・中止すると中身が複数になる。中止を優先し、呼び出し元が中止として扱えるようにする
+                    // 複数のチャンネルが同時に失敗・中止すると InnerExceptions が複数になる。中止を優先し、呼び出し元が中止として扱えるようにする
                     var inner = e.InnerExceptions.FirstOrDefault(x => x is OperationCanceledException) ?? e.InnerExceptions[0];
                     System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(inner).Throw();
                 }

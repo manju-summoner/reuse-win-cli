@@ -6,9 +6,9 @@ namespace ReuseWinCli.Enhancement
 {
     /// <summary>
     /// RE-USE（nvidia/NVIDIA-NemotronLabs-RE-USE）の推論。モノラルの音声を受け取り、補正した同じ長さの音声を返す。
-    /// 公式の inference.py と同じ手順（STFT → エンコーダー → TF-Mamba 30 段 → 振幅と位相のデコーダー → 無音フレームの処理 → iSTFT）を GPU で行う。
+    /// 公式の inference.py と同じ手順（STFT → エンコーダー → TF-Mamba 30 ブロック → 振幅と位相のデコーダー → 無音フレームの処理 → iSTFT）を GPU で行う。
     /// STFT の長さはサンプリングレートに比例させる（8kHz で n_fft 320・hop 40）。2 の累乗にならない。
-    /// 順変換は CPU の倍精度の FFT で求める。モデルは入力の位相に敏感で、ほぼ無音のビンの位相の誤差（fp32 の行列積の DFT で最大 1e-3 rad）だけで、
+    /// 順変換は CPU の倍精度 FFT で求める。モデルは入力の位相に敏感で、ほぼ無音のビンの位相の誤差（fp32 の行列積による DFT で最大 1e-3 rad）だけで、
     /// 8kHz の出力が公式と -43dB ずれる。逆変換はモデルの入力にならないので、GPU の行列積で求める。
     /// </summary>
     internal sealed class ReUseModel : IDisposable
@@ -69,7 +69,7 @@ namespace ReuseWinCli.Enhancement
         static int MakeEven(int value) => value % 2 == 0 ? value : value + 1;
 
         /// <summary>
-        /// samples サンプルを1回で処理したときの、いちばん大きい作業用バッファのバイト数（エンコーダーの入口・デコーダーの出口の 64 チャンネルの活性と、
+        /// samples サンプルを1回で処理したときの、最大の作業用バッファのバイト数（エンコーダーの最初の畳み込みの後・デコーダーの最後の畳み込みの前の 64 チャンネルのアクティベーションと、
         /// TF-Mamba の作業用バッファの大きい方）。TF-Mamba の行数が上限を超えるなら long.MaxValue
         /// </summary>
         public static long GetLargestBufferBytes(int samples, int sampleRate)
@@ -94,7 +94,7 @@ namespace ReuseWinCli.Enhancement
         }
 
         /// <summary>
-        /// 推論の CPU の前処理（STFT とモデルの入力づくり）。GPU もモデルも使わないので、ほかの推論の GPU の処理と並べて走らせられる。入力が空なら null
+        /// 推論の CPU 側の前処理（STFT とモデルの入力を作る処理）。GPU もモデルも使わないので、ほかの推論の GPU 処理と並行して実行できる。入力が空なら null
         /// </summary>
         public static PreparedInput? Prepare(ReadOnlySpan<float> input, int sampleRate)
         {
@@ -105,7 +105,7 @@ namespace ReuseWinCli.Enhancement
             var bins = fft / 2 + 1;
             var window = CreateWindow(fft);
 
-            // center=True の reflect の詰め物は入力より短くないといけない。短すぎる入力は無音を足して処理し、後で切り詰める
+            // center=True の reflect パディングは入力より短くなければならない。短すぎる入力は無音を追加して処理し、後で切り詰める
             var samples = input.ToArray();
             if (samples.Length <= fft / 2)
                 Array.Resize(ref samples, fft / 2 + 1);
@@ -117,7 +117,7 @@ namespace ReuseWinCli.Enhancement
         }
 
         /// <summary>
-        /// 推論の CPU の後処理（iSTFT の重ね合わせ）
+        /// 推論の CPU 側の後処理（iSTFT のオーバーラップ加算）
         /// </summary>
         /// <param name="framed"><see cref="Infer"/> の結果</param>
         public static float[] Finish(PreparedInput prepared, float[] framed)
@@ -126,13 +126,13 @@ namespace ReuseWinCli.Enhancement
             var result = new float[prepared.OriginalLength];
             var available = Math.Min(output.Length, prepared.OriginalLength);
             output.AsSpan(0, available).CopyTo(result);
-            // 公式の pad_or_trim_to_match と同じく、iSTFT が届かない末尾は 1e-8 で埋める
+            // 公式の pad_or_trim_to_match と同じく、iSTFT の出力が足りない末尾は 1e-8 で埋める
             result.AsSpan(available).Fill(1e-8f);
             return result;
         }
 
         /// <summary>
-        /// 推論の GPU の処理（エンコーダー → TF-Mamba → デコーダー → 逆 DFT）。作業用バッファを使い回すので、呼び出し側が 1 つずつ呼ぶ
+        /// 推論の GPU 処理（エンコーダー → TF-Mamba → デコーダー → 逆 DFT）。作業用バッファを再利用するので、呼び出し側が 1 つずつ呼ぶ
         /// </summary>
         /// <returns>窓を掛けた逆変換のフレーム [時間][n_fft]</returns>
         public float[] Infer(PreparedInput prepared)
@@ -195,7 +195,7 @@ namespace ReuseWinCli.Enhancement
                 for (var k = 0; k < bins; k++)
                 {
                     spectrum[t * bins * 2 + k] = re[k];
-                    // 実数の FFT（torch.stft）では DC と Nyquist の虚部がちょうど 0 になる。丸めの残り（±1e-15 程度）を残すと、
+                    // 実数 FFT（torch.stft）では DC と Nyquist の虚部がちょうど 0 になる。丸め誤差（±1e-15 程度）を残すと、
                     // 実部が負のときに位相が +π と -π で入れ替わり、モデルの入力が 2π ずれる
                     spectrum[t * bins * 2 + bins + k] = k == 0 || k == fft / 2 ? 0 : im[k];
                 }
@@ -205,7 +205,7 @@ namespace ReuseWinCli.Enhancement
         }
 
         /// <summary>
-        /// [時間+2][周波数+2][振幅・位相] の入力を作る。振幅は log1p で圧縮する。末尾の 2 行 2 列は公式と同じく 0 を詰める
+        /// [時間+2][周波数+2][振幅・位相] の入力を作る。振幅は log1p で圧縮する。末尾の 2 行 2 列は公式と同じく 0 でパディングする
         /// </summary>
         internal static float[] BuildModelInput(double[] spectrum, int frames, int bins, int height, int width)
         {
@@ -214,7 +214,7 @@ namespace ReuseWinCli.Enhancement
             {
                 for (var f = 0; f < bins; f++)
                 {
-                    // -0.0 を +0.0 にそろえる。無音のフレームの FFT には -0.0 が混じり、Atan2(+0, -0) が π になる（torch では 0）
+                    // -0.0 を +0.0 にそろえる。無音フレームの FFT には -0.0 が含まれ、Atan2(+0, -0) が π になる（torch では 0）
                     var re = spectrum[t * bins * 2 + f] + 0.0;
                     var im = spectrum[t * bins * 2 + bins + f] + 0.0;
                     var index = (t * width + f) * 2;
@@ -229,7 +229,7 @@ namespace ReuseWinCli.Enhancement
         {
             var bins = stft.Bins;
             // 公式の「奇妙なスイープ」対策: 振幅が 0 になったビンが半分を超えるフレームは全体を 0 にする
-            // この間 GPU は空くので、フレームごとに並列に求める
+            // この間 GPU はアイドルになるので、フレームごとに並列に求める
             var spectrum = new float[frames * bins * 2];
             Parallel.For(0, frames, t =>
             {
@@ -262,7 +262,7 @@ namespace ReuseWinCli.Enhancement
         }
 
         /// <summary>
-        /// 逆変換のフレームを重ね合わせて、窓の 2 乗の和で割る（torch.istft と同じ）。center=True の詰め物の分を先頭から捨てる
+        /// 逆変換のフレームをオーバーラップ加算して、窓の 2 乗の和で割る（torch.istft と同じ）。center=True のパディングの分を先頭から削る
         /// </summary>
         static float[] OverlapAdd(int fft, int hop, double[] window, float[] framed, int frames)
         {
@@ -305,7 +305,7 @@ namespace ReuseWinCli.Enhancement
         }
 
         /// <summary>
-        /// DenseBlock。i 段目の畳み込みの入力は [x_i, x_{i-1}, …, x_0] の連結（新しいものが先）で、64 チャンネルずつ別のバッファから足し込む
+        /// DenseBlock。i 層目の畳み込みの入力は [x_i, x_{i-1}, …, x_0] の連結（新しいものが先）で、64 チャンネルずつ別のバッファから累積加算する
         /// </summary>
         ReUseBuffer DenseBlock(ConvLayer[] layers, ReUseBuffer x0, int height, int width, string name)
         {
@@ -396,7 +396,7 @@ namespace ReuseWinCli.Enhancement
             var up1 = LoadConv(tensors, prefix + "up_conv1.", C, false, convName: "0.conv.");
             var up2 = LoadConv(tensors, prefix + "up_conv2.", C, true, convName: "0.conv.");
 
-            // 位相のデコーダーは実部と虚部の 1×1 畳み込みを 1 つの 2 チャンネルの畳み込みにまとめる
+            // 位相デコーダーは実部と虚部の 1×1 畳み込みを 1 つの 2 チャンネルの畳み込みにまとめる
             var weights = new List<float>();
             var biases = new List<float>();
             foreach (var final in finals)
@@ -419,7 +419,7 @@ namespace ReuseWinCli.Enhancement
         }
 
         /// <summary>
-        /// Conv2d → InstanceNorm2d → PReLU の 1 組を読む。重みは入力 sliceChannels チャンネルごとに分け、[出力][行][列][入力] に並べ替える。
+        /// Conv2d → InstanceNorm2d → PReLU の 1 組を読み込む。重みは入力 sliceChannels チャンネルごとに分割し、[出力][行][列][入力] に並べ替える。
         /// swapKernel は公式が時間と周波数を入れ替えてから畳み込んでいる層（デコーダーの up_conv2）で、カーネルの行と列を入れ替える
         /// </summary>
         ConvLayer LoadConv(IReadOnlyDictionary<string, SafeTensor> tensors, string prefix, int sliceChannels, bool swapKernel, string convName = "0.")
@@ -461,14 +461,14 @@ namespace ReuseWinCli.Enhancement
             return buffer;
         }
 
-        /// <summary>作業用バッファを手放す。次の <see cref="Enhance"/> で作り直す</summary>
+        /// <summary>作業用バッファを解放する。次の <see cref="Enhance"/> で作り直す</summary>
         public void ReleaseWork()
         {
             foreach (var buffer in work.Values)
                 buffer.Dispose();
             work.Clear();
             mamba.ReleaseWork();
-            // D3D11 は破棄したリソースのメモリーを Flush まで持ち続ける（48kHz・5 秒のチャンクの 2.4GB が残ったままになる）
+            // D3D11 は破棄したリソースのメモリーを Flush まで解放しない（48kHz・5 秒のチャンクの 2.4GB が残ったままになる）
             device.Run(context => context.Flush());
         }
 

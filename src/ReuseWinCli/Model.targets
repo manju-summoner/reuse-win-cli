@@ -1,9 +1,9 @@
 <Project>
   <!--
-    RE-USE の重み（nvidia/NVIDIA-NemotronLabs-RE-USE、OpenMDW-1.1）をビルド時に Hugging Face から取ってきて、埋め込みリソース「model.safetensors」として exe に入れる。
-    リビジョンを固定し、SHA256 で中身を確かめる。リポジトリには重みを入れない（38MB あるため）。
-    取ってきた重みはリビジョンごとの名前で .cache に置くので、リビジョンを変えれば取り直す。
-    手元の重みを使うときは ReuseModelPath で場所を絶対パスで指定する（ハッシュは確かめない）。
+    RE-USE の重み（nvidia/NVIDIA-NemotronLabs-RE-USE、OpenMDW-1.1）をビルド時に Hugging Face からダウンロードし、埋め込みリソース「model.safetensors」として exe に埋め込む。
+    リビジョンを固定し、SHA256 で内容を検証する。リポジトリには重みをコミットしない（38MB あるため）。
+    ダウンロードした重みはリビジョンごとのファイル名で .cache に保存するので、リビジョンを変えれば再ダウンロードする。
+    手元の重みを使うときは ReuseModelPath で場所を絶対パスで指定する（ハッシュは検証しない）。
   -->
   <PropertyGroup>
     <ReuseModelRevision>31f82f2efad1095034492f236e8dac9239ba713b</ReuseModelRevision>

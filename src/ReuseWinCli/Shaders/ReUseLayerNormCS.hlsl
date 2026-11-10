@@ -1,4 +1,4 @@
-// RE-USE の LayerNorm と残差の加算。Y には残差（ブロックへの入力）が入っていて、Y = LayerNorm(X) + Y で上書きする。
+// RE-USE の LayerNorm と残差の加算。Y には残差（ブロックへの入力）が格納されていて、Y = LayerNorm(X) + Y で上書きする。
 // Channels は MAX_CHANNELS まで。
 
 cbuffer Constants : register(b0)
@@ -17,8 +17,8 @@ RWStructuredBuffer<float> Y : register(u0);
 #define ROWS_PER_GROUP 64
 #define MAX_CHANNELS 64
 
-// 1 グループが 64 行を受け持つ。行をまとめて共有メモリーに読み込み（グローバルメモリーの読み書きをまとめるため）、
-// 各スレッドが 1 行の平均と分散を求める。行の長さを 1 つ余らせて、行ごとに読むときのバンクの衝突を避ける
+// 1 グループが 64 行を担当する。行をまとめて共有メモリーに読み込み（グローバルメモリーへのアクセスをコアレッシングするため）、
+// 各スレッドが 1 行の平均と分散を求める。行を 1 要素分パディングして、行ごとに読み込むときのバンクコンフリクトを避ける
 groupshared float tile[ROWS_PER_GROUP][MAX_CHANNELS + 1];
 groupshared float rowMean[ROWS_PER_GROUP];
 groupshared float rowScale[ROWS_PER_GROUP];
