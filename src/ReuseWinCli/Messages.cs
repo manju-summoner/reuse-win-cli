@@ -40,7 +40,7 @@ namespace ReuseWinCli
                   --model <パス>       exe に同梱されている重みの代わりに使用する RE-USE の重み（.safetensors）
                   --license            ライセンスを表示する
               -v, --version            バージョンを表示する
-              -h, --help               この説明を表示する
+              -h, --help               このヘルプを表示する
 
             標準入出力（入力に「-」を指定すると標準入力から読み込み、出力は既定で標準出力）:
                   --in-format <形式>   標準入力の形式。wav（既定）・f32le・s16le
@@ -90,7 +90,7 @@ namespace ReuseWinCli
         public static string MissingValue(string option) => T($"{option} の値がありません。", $"Missing value for {option}.");
 
         public static string InvalidStrength(string value) => T(
-            $"強さは 0〜100 の数で指定してください: {value}",
+            $"強さは 0〜100 の数値で指定してください: {value}",
             $"Strength must be a number from 0 to 100: {value}");
 
         public static string OutputNeedsSingleInput => T(
@@ -184,11 +184,11 @@ namespace ReuseWinCli
             "  The output was closed; stopping.");
 
         public static string MediaFoundationMissing => T(
-            "Windows の Media Foundation が見つかりません。Windows の N エディションでは、「メディア機能パック」（Media Feature Pack）を入れてください。",
+            "Windows の Media Foundation が見つかりません。Windows の N エディションでは、「メディア機能パック」（Media Feature Pack）をインストールしてください。",
             "Windows Media Foundation was not found. On Windows N editions, install the Media Feature Pack.");
 
         public static string OutputIsDirectory(string path) => T(
-            $"出力先にはファイルの名前を指定してください（フォルダが指定されています）: {path}",
+            $"出力先にはファイル名を指定してください（フォルダが指定されています）: {path}",
             $"The output must be a file name, not a folder: {path}");
 
         public static string OutputExists(string path) => T(
@@ -196,10 +196,10 @@ namespace ReuseWinCli
             $"The output file already exists (use -y to overwrite): {path}");
 
         public static string UnsupportedFile => T(
-            "このファイルは読めません（Windows が対応していない形式か、壊れています）。",
+            "このファイルは読み込めません（Windows が対応していない形式か、ファイルが破損しています）。",
             "Cannot read this file (the format is not supported by Windows, or the file is broken).");
 
-        public static string NoAudioTrack => T("音声のトラックがありません。", "The file has no audio track.");
+        public static string NoAudioTrack => T("音声トラックがありません。", "The file has no audio track.");
 
         public static string CannotConvertToFloat => T("音声を 32bit float に変換できません。", "Cannot convert the audio to 32-bit float.");
 
@@ -207,7 +207,7 @@ namespace ReuseWinCli
             $"サンプリングレート {rate}Hz には対応していません。",
             $"Unsupported sample rate: {rate} Hz.");
 
-        public static string UnknownChannels => T("音声のチャンネル数が分かりません。", "Unknown number of audio channels.");
+        public static string UnknownChannels => T("音声のチャンネル数が不明です。", "Unknown number of audio channels.");
 
         public static string ReadFailed => T("音声の読み込みに失敗しました。", "Failed to read the audio.");
 

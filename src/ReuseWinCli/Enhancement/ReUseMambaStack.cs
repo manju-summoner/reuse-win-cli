@@ -69,7 +69,7 @@ namespace ReuseWinCli.Enhancement
             if (rows <= 0 || rows > MaxRows)
                 throw new ArgumentOutOfRangeException(nameof(frames), $"{frames}×{bins} 行は扱えません。");
             if (activation.Length < rows * Channels)
-                throw new ArgumentException("活性のバッファが足りません。", nameof(activation));
+                throw new ArgumentException("アクティベーションのバッファが足りません。", nameof(activation));
 
             EnsureCapacity(rows);
             foreach (var block in blocks)
@@ -206,7 +206,7 @@ namespace ReuseWinCli.Enhancement
             if (!tensors.TryGetValue(name, out var tensor))
                 throw new KeyNotFoundException($"重み {name} がありません。");
             if (!tensor.Shape.AsSpan().SequenceEqual(shape))
-                throw new ArgumentException($"重み {name} の形 [{string.Join(",", tensor.Shape)}] が想定 [{string.Join(",", shape)}] と違います。");
+                throw new ArgumentException($"重み {name} の形状 [{string.Join(",", tensor.Shape)}] が想定 [{string.Join(",", shape)}] と違います。");
             return tensor;
         }
 

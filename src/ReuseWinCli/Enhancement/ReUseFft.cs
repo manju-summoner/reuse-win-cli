@@ -100,7 +100,7 @@ namespace ReuseWinCli.Enhancement
             if (re.Length != Length || im.Length != Length)
                 throw new ArgumentException("長さが違います。", nameof(re));
             if (workRe.Length < Length || workIm.Length < Length)
-                throw new ArgumentException("作業用の配列が足りません。", nameof(workRe));
+                throw new ArgumentException("作業用配列の長さが足りません。", nameof(workRe));
             if (factors is null)
             {
                 ForwardBluestein(re, im);

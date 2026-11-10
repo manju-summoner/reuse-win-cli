@@ -21,7 +21,7 @@
       <!-- バージョンのフォルダ名の順に並ぶので、最後のものがいちばん新しい -->
       <FxcPath>%(_FxcCandidate.FullPath)</FxcPath>
     </PropertyGroup>
-    <Error Condition="'$(FxcPath)' == '' Or !Exists('$(FxcPath)')" Text="fxc.exe が見つかりません。Windows SDK を入れるか、FxcPath で fxc.exe の場所を指定してください。" />
+    <Error Condition="'$(FxcPath)' == '' Or !Exists('$(FxcPath)')" Text="fxc.exe が見つかりません。Windows SDK をインストールするか、FxcPath で fxc.exe の場所を指定してください。" />
   </Target>
 
   <Target Name="CompileShaders"
